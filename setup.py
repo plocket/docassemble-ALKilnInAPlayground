@@ -46,7 +46,7 @@ def find_package_data(where='.', package='', exclude=standard_exclude, exclude_d
 setup(name='docassemble.ALKilnInAPlayground',
       version='0.0.1',
       description=('A docassemble extension to run the ALKiln testing framework on a Project in your Playground.'),
-      long_description='# docassemble.ALKilnInAPlayground\n\nA docassemble extension to run the ALKiln testing framework on a Project in your Playground.\n\n## Author\n\nmb.restless.tech@gmail.com\n\n',
+      long_description='# docassemble.ALKilnInAPlayground\r\n\r\nA docassemble extension to run the ALKiln testing framework on a Project in your Playground.\r\n',
       long_description_content_type='text/markdown',
       author='',
       author_email='example@example.com',

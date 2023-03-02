@@ -5,7 +5,7 @@ modules:
 mandatory: True
 code: |
   #excuse
-  do_shell()
+  #do_shell()
   end
 #---
 #question: |
