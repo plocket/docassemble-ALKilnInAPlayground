@@ -5,7 +5,26 @@ import subprocess
 
 __all__ = ['do_shell']
 
+'''
+tests can run locally and on GitHub
+The Computer has a docker container with node
+want tests to run, user to see the result, download generated files
+want not on GitHub, not do something on their local machine, I want to do it on The Computer
+'''
+
 def do_shell():
+  #command = ['npm', 'install', '@suffolklitlab/alkiln', '/tmp']
+  #tmp = ''
+  #with subprocess.Popen(command, stdout=subprocess.PIPE) as proc:
+  #  while True:
+  #    line = proc.stdout.readline()
+  #    if not line: break
+  #    tmp += line
+  #    output = tmp
+  #output = tmp
+  #return output
+  
+  ## Working
   #try:
   #  foo = subprocess.run(["node", "console.log('foo');"], check=True, capture_output=True, text=True);
   #  return foo
@@ -17,13 +36,18 @@ def do_shell():
   #      return error.message
   #  else:
   #      return error
-  command = ['node', 'console.log(\'foo\');']
+  
+  ## Trying next
+  command = ['npm', 'install', '@suffolklitlab/alkiln']
   outcome = subprocess.run(command, check=False, capture_output=True)
   log(f'returncode = {outcome.returncode}', 'console')
   if outcome.returncode != 0:
     # there was an error, we assume the traceback was printed to stderr
     log('there was an error :\n', 'console')
-    return(outcome.stderr.decode('utf-8'), 'console')
+    log(outcome.stderr.decode('utf-8'), 'console')
+    return(outcome.stderr.decode('utf-8'))
   else:
+    log(outcome, 'console')
     return outcome
+  
   return 'foo'

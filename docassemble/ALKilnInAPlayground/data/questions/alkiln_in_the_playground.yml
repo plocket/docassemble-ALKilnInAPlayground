@@ -4,20 +4,39 @@ modules:
 ---
 mandatory: True
 code: |
-  #excuse
-  #do_shell()
+  #output
   end
-#---
-#question: |
-#  Excuse for a question
-#fields:
-#  - Pick a project to test: project
-#    input type: radio
-#    choices:
+---
+code: |
+  import subprocess
+  
+  command = ['npm', 'install', '@suffolklitlab/alkiln', '/tmp']
+  tmp = ''
+  with subprocess.Popen(command, stdout=subprocess.PIPE) as proc:
+    while True:
+      line = proc.stdout.readline()
+      if not line: break
+      tmp += line
+      output = tmp
+  output = tmp
+  '''
+  outcome = subprocess.run(command, check=False, capture_output=True)
+  log(f'returncode = {outcome.returncode}', 'console')
+  if outcome.returncode != 0:
+    # there was an error, we assume the traceback was printed to stderr
+    log('there was an error :\n', 'console')
+    log(outcome.stderr.decode('utf-8'), 'console')
+    temp = outcome.stderr.decode('utf-8')
+  else:
+    log(outcome, 'console')
+    temp = outcome
+    '''
+  
+  #output = temp
 ---
 event: end
 question: |
   End
 subquestion: |
-  ${ do_shell().stdout }
+  ${ do_shell() }
 ---
