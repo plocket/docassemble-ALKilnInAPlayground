@@ -1,0 +1,296 @@
+---
+comment: |
+  - Add project name env var. #513 PR.
+  - id from user info? or need to get user id.
+---
+mandatory: True
+code: |
+  #if not user_logged_in():
+  #  ask_to_log_in
+  #wants_tags
+  #file_name
+  the_task
+  #if the_task.wait():  # Will cause a timeout
+  if the_task.ready():  # Won't cause a timeout
+    #get_file
+    final_screen
+  else:
+    waiting_screen
+---
+code: |
+  the_task = background_action('bg_task', wants_tags=wants_tags)
+---
+code: |
+  user_id = user_info().id
+---
+event: bg_task
+code: |
+  import subprocess
+  import os
+  import json
+  import re
+  
+  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
+  
+  if False:
+    outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+    if outcome.returncode != 0:
+      temp = outcome.stderr.decode('utf-8')
+    else:
+      temp = outcome.stdout.decode('utf-8')
+  else:
+    temp = "not installing"
+    
+  #log('==================blah=================')
+  
+  ## TODO: Try with default Playground Project
+  #test_output = subprocess.run(
+  #  ['/var/www/.npm-global/bin/alkiln-run'],
+  #  check=False,
+  #  capture_output=True,
+  #  env=
+  #    dict(os.environ, SERVER_URL="http://localhost", _ORIGIN='interview', _PROJECT_NAME=project_name, _USER_ID=user_id, _TAGS=tag_expression, REPO_URL="X", BRANCH_NAME="X", DOCASSEMBLE_DEVELOPER_API_KEY="X"
+  #    ))
+  test_output = subprocess.run(
+    ['/var/www/.npm-global/bin/alkiln-run'],
+    check=False,
+    capture_output=True,
+    env=dict(os.environ, SERVER_URL="http://localhost", _ORIGIN='interview', _PROJECT_NAME='LocalALKilnInPlayground', _USER_ID='1', _TAGS='', REPO_URL="X", BRANCH_NAME="X", DOCASSEMBLE_DEVELOPER_API_KEY="X"))
+  
+  #output = f"{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}"
+  
+  with open('/tmp/runtime_config.json') as config:
+    # parse path form config
+    folder_name = json.load(config)['artifacts_path']
+  
+  safe_zip_name = re.sub("( )+", "_", folder_name)
+  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
+  #ls_files = subprocess.run(['ls', '/tmp'], check=False, capture_output=True)
+  
+  # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
+  # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
+  #output_file.initialize(filename="custom.css")
+  #output_file.copy_into(bootstrap_dir + f"dist/css/{file_name}.css")
+  
+  #myfile.initialize(filename=safe_zip_name + '.zip')
+  #myfile.initialize(filename='foo.zip')
+  #myfile.copy_into(safe_zip_name + '.zip')
+  #myfile.commit()
+  #
+  #log('myfile.path()')
+  #log(myfile.path())
+  
+  #folder_name = get_folder_name()
+  #zip_name = do_zip(folder_name)
+  #initialize_file(the_file=myfile, base_name=zip_name)
+  
+  with open('/tmp/runtime_config.json') as config:
+    folder_name = json.load(config)['artifacts_path']
+  
+  log('folder_name')
+  log(folder_name)
+  
+  safe_zip_name = re.sub("( )+", "_", folder_name)
+  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
+  
+  log('zipped errors:')
+  log(contents.stderr.decode())
+  
+  myfile.initialize(filename=f'{safe_zip_name}.zip')
+  myfile.copy_into(f'{safe_zip_name}.zip')
+  myfile.commit()
+  
+   # This logs and is happy
+  log('myfile.path():')
+  log(myfile.path())
+  
+  
+  output = f"<a href='{myfile.url_for()}'>file</a>\n\n<pre><code>{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}</code></pre>"
+  
+  background_response(output) #.stdout.decode('utf-8').strip())
+---
+objects:
+  - myfile: DAFile
+---
+code: |
+  artifacted = False
+---
+code: |
+  zipped = False
+---
+sets: myfile.initialized
+code: |
+  import json
+  import re
+  import subprocess
+
+  #if not artifacted:
+  with open('/tmp/runtime_config.json') as config:
+    folder_name = json.load(config)['artifacts_path']
+  artifacted = True
+
+  log('folder_name', 'console')
+  log(folder_name, 'console')
+  
+  #if not zipped:
+  safe_zip_name = re.sub("( )+", "_", folder_name)
+  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
+  zipped = True
+
+  log('zipped errors:', 'console')
+  log(contents.stderr.decode(), 'console')
+  
+  myfile.initialize(filename=f'{safe_zip_name}.zip')
+  log(1, 'console')
+  myfile.copy_into(f'/tmp/{safe_zip_name}.zip')
+  log(2, 'console')
+  myfile.commit()
+
+  log('myfile.path():', 'console')
+  log(myfile.path(), 'console')
+  
+  get_file = True
+---
+comment: |
+  id: get path names
+  code: |
+    import json
+
+    def get_folder_name():
+      '''Gets the name of the current alkiln output
+         folder from the alkiln config file.'''
+      with open('/tmp/runtime_config.json') as config:
+        folder_name = json.load(config)['artifacts_path']
+
+      log('folder_name')
+      log(folder_name)
+
+      return folder_name
+  ---
+  id: zip
+  code: |
+    import subprocess
+    import re
+
+    def do_zip(folder_name):
+      '''Zips up the folder with the given name and returns
+         the name of the zip file.'''
+      safe_zip_name = re.sub("( )+", "_", folder_name)
+      contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
+
+      log('zipped errors:')
+      log(contents.stderr.decode())
+
+      return safe_zip_name
+  ---
+  id: initialize DAFile
+  code: |
+
+    def initialize_file(the_file, base_name):
+      '''Return the same given DAFile after initializing
+         it and giving it contents.'''
+      the_file.initialize(filename=f'{base_name}.zip')
+      the_file.initialized = True
+      the_file.copy_into(f'{base_name}.zip')
+      the_file.commit()
+
+      log('myfile.path():')
+      log(myfile.path())
+
+      return the_file
+---
+code: |
+  from docassemble.webapp.files import SavedFile
+  from docassemble.webapp.backend import directory_for
+  import os
+
+  def get_list_of_projects(user_id):
+    playground = SavedFile(user_id, fix=False, section='playground')
+    return playground.list_of_dirs()
+    
+  def get_file_paths(user_id, section='playground', project='default'):
+    area = SavedFile(user_id, fix=True, section=section)
+    the_directory = directory_for(area, project)
+    files = [os.path.join(the_directory, file) for file in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, file))]
+    # Maybe remove the `.placeholder` file, here or later
+    return files
+---
+event: ask_to_log_in
+id: not logged in
+question: |
+  You need to log in
+subquestion: |
+  To run these tests, you need to be logged into the server where you're keeping the package that you will test.
+---
+id: test info
+comment: |  
+  ${ user_info().id }
+  
+  ${ get_list_of_projects( user_info().id ) }
+  
+  ${ user_info().package }
+  
+  ${ user_info().filename }
+question: |
+  How much shall I add to 553?
+subquestion: |
+  Not spinning: <i class="fas fa-spinner fa-spin"></i>
+  
+fields:
+  - Do you want to use tags?: wants_tags
+    datatype: yesnoradio
+  - What tags do you want to use? Use a tag expression: tag_expression
+    show if: wants_tags
+  # What project are your test files in? Can get test files/package files from server instead of Playground?
+  - What Project is the code in that you want to test?: project_name
+    input type: radio
+    choices:
+      code: |
+        [[ proj, proj ] for proj in get_list_of_projects( user_info().id )] + [['', 'Default']]
+---
+if:
+  - not wants_tags
+code: |
+  tag_expression = ''
+---
+id: interview to test
+question: |
+  Which interview will you run?
+subquestion: |
+  Pick your file
+fields:
+  - What file do you run to start the interview you want to test?: file_name
+    input type: radio
+    choices:
+      code: |
+        [os.path.basename(path) for path in get_file_paths( user_info().id, project=project_name )]
+---
+code: |
+  start_time = current_datetime()
+---
+event: waiting_screen
+question: |
+  Hang tight.
+  Still waiting for an answer.
+subquestion: |
+  This screen will reload every
+  ten seconds until the answer
+  is available.
+  
+  <i class="fas fa-spinner fa-spin"></i>
+  
+#  ${ date_difference( ending=current_datetime(), starting=as_datetime(start_time) ) }
+  
+#  <script>
+#  let $time = $('<div id="timer"></div>');
+#  
+#  </script>
+reload: True
+---
+event: final_screen
+question: |
+  The answer is
+subquestion: |
+  
+  ${ the_task.get() }
+  

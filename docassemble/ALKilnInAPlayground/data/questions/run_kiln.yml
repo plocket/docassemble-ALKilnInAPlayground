@@ -1,0 +1,24 @@
+---
+modules:
+  - .run_alkiln
+---
+mandatory: True
+code: |
+  #excuse
+  #do_shell()
+  end
+#---
+#question: |
+#  Excuse for a question
+#fields:
+#  - Pick a project to test: project
+#    input type: radio
+#    choices:
+---
+event: end
+question: |
+  End
+subquestion: |
+  foo
+#  ${ do_shell() }
+---
