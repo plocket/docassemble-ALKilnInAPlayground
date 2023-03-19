@@ -107,9 +107,36 @@ code: |
   myfile.commit()
   log(myfile.path())
   
-  output = f"<a href='{myfile.url_for()}'>file</a>\n\n<pre><code>{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}</code></pre>"
+  files_html = get_files_html(folder_name)
+  
+  output = f"<a href='{myfile.url_for()}'>All generated files zip</a>\n\n{files_html}\n\n<pre><code>{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}</code></pre>"
   
   background_response(output) #.stdout.decode('utf-8').strip())
+---
+code: |
+  import os
+  
+  def get_files_html(folder_name):
+    '''Return html to show files in the artifacts folder.
+        Syntax highlighting.'''
+    html = '<div><ul>'
+    
+    # get all files' and folders' names
+    names = os.listdir(f'/tmp/{folder_name}/.')
+
+    
+    for root_path, dir_names, file_names in os.walk(f'/tmp/{folder_name}'):
+      html += '<li>\n'
+      for file_name in file_names:
+        # List the name of the file
+        abs_file_path = os.path.abspath(os.path.join(root_path, file_name))
+        html += f'<p>{abs_file_path}</p>\n'
+        # Make a DAFile for each file
+      html += '</li>'
+      
+    html += '</ul></div>'
+    
+    return html
 ---
 event: delete_artifacts
 code: |
@@ -154,39 +181,6 @@ code: |
 ---
 code: |
   zipped = False
----
-#sets: myfile.initialized
-#code: |
-#  import json
-#  import re
-#  import subprocess
-#
-#  #if not artifacted:
-#  with open('/tmp/runtime_config.json') as config:
-#    folder_name = json.load(config)['artifacts_path']
-#  artifacted = True
-#
-#  log('folder_name', 'console')
-#  log(folder_name, 'console')
-#  
-#  #if not zipped:
-#  safe_zip_name = re.sub("( )+", "_", folder_name)
-#  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
-#  zipped = True
-#
-#  log('zipped errors:', 'console')
-#  log(contents.stderr.decode(), 'console')
-#  
-#  myfile.initialize(filename=f'{safe_zip_name}.zip')
-#  log(1, 'console')
-#  myfile.copy_into(f'/tmp/{safe_zip_name}.zip')
-#  log(2, 'console')
-#  myfile.commit()
-#
-#  log('myfile.path():', 'console')
-#  log(myfile.path(), 'console')
-#  
-#  get_file = True
 ---
 code: |
   from docassemble.webapp.files import SavedFile
@@ -263,7 +257,6 @@ reconsider: True
 code: |
   current_time = current_datetime()
   time_passed = current_time - start_time
-  #time_passed = date_difference(starting=start_time, ending=current_time)
 ---
 prevent going back: True
 event: waiting_screen

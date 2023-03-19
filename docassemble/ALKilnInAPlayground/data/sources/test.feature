@@ -2,6 +2,7 @@ Feature: interview runs
 
 Scenario: 1 interview runs
   Given I start the interview at "http://localhost/interview?i=docassemble.playground1LocalALKilnInPlayground%3Atest_background.yml"
+  And I take a screenshot
 
 @2
 Scenario: 2 interview runs
