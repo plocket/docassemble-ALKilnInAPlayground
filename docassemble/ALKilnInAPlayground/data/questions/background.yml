@@ -57,7 +57,8 @@ code: |
   import json
   import re
   
-  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
+  if False:
+    subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
   if False:
     outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
@@ -120,10 +121,6 @@ code: |
     '''Return html to show files in the artifacts folder.
         Syntax highlighting.'''
     html = '<div><ul>'
-    
-    # get all files' and folders' names
-    names = os.listdir(f'/tmp/{folder_name}/.')
-
     
     for root_path, dir_names, file_names in os.walk(f'/tmp/{folder_name}'):
       html += '<li>\n'
