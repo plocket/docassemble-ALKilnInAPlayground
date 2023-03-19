@@ -51,6 +51,12 @@ code: |
   has_run_tests = False
 ---
 event: bg_task
+needs:
+  - has_run_tests
+  - get_folder_name
+  - get_zip_name
+  - got_files_html
+  - get_files_html
 code: |
   import subprocess
   import os
@@ -108,11 +114,16 @@ code: |
   myfile.commit()
   log(myfile.path())
   
-  files_html = get_files_html(folder_name)
+  if (not got_files_html):
+    files_html = get_files_html(folder_name)
+    got_files_html = True
   
   output = f"<a href='{myfile.url_for()}'>All generated files zip</a>\n\n{files_html}\n\n<pre><code>{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}</code></pre>"
   
   background_response(output) #.stdout.decode('utf-8').strip())
+---
+code: |
+  got_files_html = False
 ---
 code: |
   import os
@@ -120,18 +131,70 @@ code: |
   def get_files_html(folder_name):
     '''Return html to show files in the artifacts folder.
         Syntax highlighting.'''
-    html = '<div><ul>'
+    html = '<div>\n<h2 style="font-size: 1.2em">All tests</h2>\n<ul>\n'
     
-    for root_path, dir_names, file_names in os.walk(f'/tmp/{folder_name}'):
+    # Not recursive
+    #for dirs_and_file_names in os.listdir(f'/tmp/{folder_name}'):
+    #  html += f'<li>\n{dir}\n</li>\n'
+    
+    # Not recursive
+    top_dirs = []
+    top_files = []
+    
+    
+    # collect names and paths
+    with os.scandir(f'/tmp/{folder_name}') as scan:
+      for dir_item in scan:
+        if dir_item.is_dir():
+          top_dirs.append(dir_item)
+        elif dir_item.is_file():
+          top_files.append(dir_item)
+          
+    # Show files that are for the all the tests combined
+    # This includes error screenshots
+    # TODO: alkiln, when there are secrets on a page, show something in place of an error screenshot. Default image?
+    for file in top_files:
+      html += f'<li>\n<strong>{file.name}</strong>: {file.path}\n</li>\n'
+    
+    # Show files in each Scenario
+    html += '</ul>\n<h2 style="font-size: 1.2em">Scenarios</h2>\n<ul>\n'
+    for dir in top_dirs:
       html += '<li>\n'
-      for file_name in file_names:
-        # List the name of the file
-        abs_file_path = os.path.abspath(os.path.join(root_path, file_name))
-        html += f'<p>{abs_file_path}</p>\n'
-        # Make a DAFile for each file
-      html += '</li>'
+      html += f'<span><strong>{dir.name}</strong>: {dir.path}</span>\n'
+      #with os.walk(f'{dir.path}') as walk:
+      html += '<ul>\n'
+      for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
+        for file_name in file_names:
+          html += f'<li>\n{file_name}\n</li>\n'
+      html += '</ul>\n'
+      html += '</li>\n'
+    
+    #log(1)
+    #for root_path, dir_names, file_names in os.walk(f'/tmp/{folder_name}'):
+    #  html += '<li>\n'
+    #  for file_name in file_names:
+    #    # List the name of the file
+    #    html += f'<p>{file_name}</p>\n<p>'
+    #    
+    #    log(2)
+    #    # Show a DAFile for each file
+    #    da_file = DAFile()
+    #    log(3)
+    #    da_file.initialize(filename=f'{file_name}')
+    #    log(4)
+    #    abs_file_path = os.path.abspath(os.path.join(root_path, file_name))
+    #    da_file.copy_into(f'{abs_file_path}')
+    #    log(5)
+    #    da_file.commit()
+    #    log(f'6: {da_file.path()}')
+    #    html = f'<span>{da_file}</span>'
+    #    log(7)
+    #    
+    #  html += '\n</p>\n</li>\n'
       
     html += '</ul></div>'
+    
+    log(html)
     
     return html
 ---
@@ -268,6 +331,7 @@ subquestion: |
 #  ${ time_passed.minutes }min ${ time_passed.seconds }s 
 #  ${ date_difference( ending=current_datetime(), starting=as_datetime(start_time) ) }
   
+# experiment for stack overflow question
 #back button: True
 #buttons:
 #  - Back: refresh
