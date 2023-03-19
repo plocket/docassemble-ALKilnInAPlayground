@@ -15,31 +15,48 @@ mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
-  #file_name
   #wants_tags
   
   #test for stackoverflow question
-  #if file_name:
-  #  undefine('file_name')
+  #if stackoverflow:
+  #  undefine('stackoverflow')
   #  force_ask('waiting_screen')
   
   # Try to get timer going
-  #start_time
   #time_passed
   #waiting_screen
   
   wants_tags
+  #test_start_time
   the_task
   #if the_task.wait():  # Will cause a timeout
   if the_task.ready():  # Won't cause a timeout
-    if do_delete:
-      delete_task
-      if delete_task.ready():
-        deleted
-      else:
-        wait_for_delete
+    show_output
+    #if do_delete:
+    #  delete_task
+    #  if delete_task.ready():
+    #    deleted
+    #  else:
+    #    wait_for_delete
+    pass
   else:
     waiting_screen
+---
+event: do_delete
+code: |
+  delete_start_time
+  delete_task
+  if delete_task.ready():
+    deleted
+  else:
+    wait_for_delete
+  finish_delete_artifacts_flow = True
+---
+id: stackoverflow
+question: |
+  Stackoverflow question
+fields:
+  - What file do you run to start the interview you want to test?: stackoverflow
 ---
 code: |
   the_task = background_action('bg_task')
@@ -118,7 +135,12 @@ code: |
     files_html = get_files_html(folder_name)
     got_files_html = True
   
-  output = f"<a href='{myfile.url_for()}'>All generated files zip</a>\n\n{files_html}\n\n<pre><code>{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}</code></pre>"
+  output = f'<a href=\'{myfile.url_for()}\'>All generated files zip</a>\n\n'
+  output += f'{files_html}\n\n'
+  output += f'<pre>\n<code>\n{temp}\n\n---\n\n'
+  output += f'{test_output.stdout.decode("utf-8")}{test_output.stderr.decode("utf-8")}\n'
+  output += f'</code>\n</pre>\n\n'
+  output += f'{ action_button_html(url_action("do_delete"), label="Delete generated files") }'
   
   background_response(output) #.stdout.decode('utf-8').strip())
 ---
@@ -233,14 +255,9 @@ code: |
       folder_name = json.load(config)['artifacts_path']
     return folder_name
 ---
+# TODO: Get rid of this and do it in code
 objects:
   - myfile: DAFile
----
-code: |
-  artifacted = False
----
-code: |
-  zipped = False
 ---
 code: |
   from docassemble.webapp.files import SavedFile
@@ -251,12 +268,12 @@ code: |
     playground = SavedFile(user_id, fix=False, section='playground')
     return playground.list_of_dirs()
     
-  def get_file_paths(user_id, section='playground', project='default'):
-    area = SavedFile(user_id, fix=True, section=section)
-    the_directory = directory_for(area, project)
-    files = [os.path.join(the_directory, file) for file in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, file))]
-    # Maybe remove the `.placeholder` file, here or later
-    return files
+  #def get_project_file_paths(user_id, section='playground', project='default'):
+  #  area = SavedFile(user_id, fix=True, section=section)
+  #  the_directory = directory_for(area, project)
+  #  files = [os.path.join(the_directory, file) for file in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, file))]
+  #  # Maybe remove the `.placeholder` file, here or later
+  #  return files
 ---
 event: ask_to_log_in
 id: not logged in
@@ -286,37 +303,27 @@ fields:
     datatype: yesnoradio
   - What tags do you want to use? Use a tag expression: tag_expression
     show if: wants_tags
-  # What project are your test files in? Can get test files/package files from server instead of Playground?
-  - What Project is the code in that you want to test?: project_name
+  - note: |
+      The code you want to test should be in a Project on your Playground
+  - What Project is the code in?: project_name
     input type: radio
     choices:
       code: |
-        [[ proj, proj ] for proj in get_list_of_projects( user_info().id )] + [['', 'Default']]
+        [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
+#+ [['', 'Default']]
 ---
 if:
   - not wants_tags
 code: |
   tag_expression = ''
 ---
-id: interview to test
-question: |
-  Which interview will you run?
-subquestion: |
-  Pick your file
-fields:
-  - What file do you run to start the interview you want to test?: file_name
-    input type: radio
-    choices:
-      code: |
-        [os.path.basename(path) for path in get_file_paths( user_info().id, project=project_name )]
----
 code: |
-  start_time = current_datetime()
+  test_start_time = current_datetime()
 ---
 reconsider: True
 code: |
-  current_time = current_datetime()
-  time_passed = current_time - start_time
+  # Deliberately explicit about the end time
+  test_time = date_difference( ending=current_datetime(), starting=test_start_time )
 ---
 prevent going back: True
 event: waiting_screen
@@ -328,8 +335,10 @@ subquestion: |
   
   <i class="fas fa-spinner fa-spin"></i>
   
-#  ${ time_passed.minutes }min ${ time_passed.seconds }s 
-#  ${ date_difference( ending=current_datetime(), starting=as_datetime(start_time) ) }
+  Elapsed time: ${ str(test_time.delta) }
+#  :${ test_time.seconds } 
+  
+#  ${ format_time(date_difference( ending=current_datetime(), starting=test_start_time ), format='hh:mm:ss') } since the tests started
   
 # experiment for stack overflow question
 #back button: True
@@ -339,15 +348,24 @@ subquestion: |
 #    url: https://ecosia.com
 ---
 prevent going back: True
+event: show_output
 question: |
   The answer is
 subquestion: |
   
   ${ the_task.get() }
   
-fields:
-  - Delete generated files and folders: do_delete
-    datatype: yesnoradio
+#fields:
+#  - Delete generated files and folders: do_delete
+#    datatype: yesnoradio
+---
+code: |
+  delete_start_time = current_datetime()
+---
+reconsider: True
+code: |
+  # Deliberately explicit about the end time
+  delete_time = date_difference( ending=current_datetime(), starting=test_start_time )
 ---
 prevent going back: True
 id: wait for delete
@@ -355,10 +373,12 @@ event: wait_for_delete
 reload: True
 question: |
   Still deleting files and folders
+subquestion: |
+  Elapsed time: ${ str(delete_time.delta) }
 ---
 prevent going back: True
 id: deleted
 event: deleted
 question: |
-  Files and folders deleted
+  Files and folders generated by alkiln are deleted
 ---
