@@ -1,27 +1,54 @@
 ---
 comment: |
-  - Add project name env var. #513 PR.
-  - id from user info? or need to get user id.
+  TODO:
+  - [ ] Add project name env var. #513 PR.
+  - [ ] test using default project
+  - [ ] restart this session
+  - [ ] start new session/interview
+  - [ ] delete generated files
+  - [x] Use dynamic server url
+  - [x] Use dynamic project
+  - [x] Use dynamic user id
+  - [x] Use dynamic tags
 ---
 mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
-  #wants_tags
   #file_name
+  #wants_tags
+  
+  #test for stackoverflow question
+  #if file_name:
+  #  undefine('file_name')
+  #  force_ask('waiting_screen')
+  
+  # Try to get timer going
+  #start_time
+  #time_passed
+  #waiting_screen
+  
+  wants_tags
   the_task
   #if the_task.wait():  # Will cause a timeout
   if the_task.ready():  # Won't cause a timeout
-    #get_file
-    final_screen
+    if do_delete:
+      delete_task
+      if delete_task.ready():
+        deleted
+      else:
+        wait_for_delete
   else:
     waiting_screen
 ---
 code: |
-  the_task = background_action('bg_task', wants_tags=wants_tags)
+  the_task = background_action('bg_task')
 ---
 code: |
-  user_id = user_info().id
+  delete_task = background_action('delete_artifacts')
+---
+code: |
+  has_run_tests = False
 ---
 event: bg_task
 code: |
@@ -40,74 +67,84 @@ code: |
       temp = outcome.stdout.decode('utf-8')
   else:
     temp = "not installing"
+  
+  server_url = url_of('root', _external=True)
+  log('================= server_url:')
+  log(server_url)
+  
+  # if statement for idempotency - ensure tests are only run once
+  if not has_run_tests:
+    test_output = subprocess.run(
+      ['/var/www/.npm-global/bin/alkiln-run'],
+      check=False,
+      capture_output=True,
+      env=dict(os.environ,
+        _ORIGIN='interview',
+        SERVER_URL=server_url,
+        _PROJECT_NAME=project_name,
+        _USER_ID=f'{user_info().id}',
+        _TAGS=tag_expression,
+        # Don't need the values of these when running in interview
+        REPO_URL="X",
+        BRANCH_NAME="X",
+        DOCASSEMBLE_DEVELOPER_API_KEY="X"
+    ))
+    has_run_tests = True
     
-  #log('==================blah=================')
-  
-  ## TODO: Try with default Playground Project
-  #test_output = subprocess.run(
-  #  ['/var/www/.npm-global/bin/alkiln-run'],
-  #  check=False,
-  #  capture_output=True,
-  #  env=
-  #    dict(os.environ, SERVER_URL="http://localhost", _ORIGIN='interview', _PROJECT_NAME=project_name, _USER_ID=user_id, _TAGS=tag_expression, REPO_URL="X", BRANCH_NAME="X", DOCASSEMBLE_DEVELOPER_API_KEY="X"
-  #    ))
-  test_output = subprocess.run(
-    ['/var/www/.npm-global/bin/alkiln-run'],
-    check=False,
-    capture_output=True,
-    env=dict(os.environ, SERVER_URL="http://localhost", _ORIGIN='interview', _PROJECT_NAME='LocalALKilnInPlayground', _USER_ID='1', _TAGS='', REPO_URL="X", BRANCH_NAME="X", DOCASSEMBLE_DEVELOPER_API_KEY="X"))
-  
-  #output = f"{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}"
-  
-  with open('/tmp/runtime_config.json') as config:
-    # parse path form config
-    folder_name = json.load(config)['artifacts_path']
-  
-  safe_zip_name = re.sub("( )+", "_", folder_name)
-  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
-  #ls_files = subprocess.run(['ls', '/tmp'], check=False, capture_output=True)
+  log(has_run_tests)
   
   # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
   # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
-  #output_file.initialize(filename="custom.css")
-  #output_file.copy_into(bootstrap_dir + f"dist/css/{file_name}.css")
   
-  #myfile.initialize(filename=safe_zip_name + '.zip')
-  #myfile.initialize(filename='foo.zip')
-  #myfile.copy_into(safe_zip_name + '.zip')
-  #myfile.commit()
-  #
-  #log('myfile.path()')
-  #log(myfile.path())
-  
-  #folder_name = get_folder_name()
-  #zip_name = do_zip(folder_name)
-  #initialize_file(the_file=myfile, base_name=zip_name)
-  
-  with open('/tmp/runtime_config.json') as config:
-    folder_name = json.load(config)['artifacts_path']
-  
-  log('folder_name')
+  folder_name = get_folder_name()
   log(folder_name)
-  
-  safe_zip_name = re.sub("( )+", "_", folder_name)
+  safe_zip_name = get_zip_name(folder_name)
   contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
   
-  log('zipped errors:')
-  log(contents.stderr.decode())
-  
+  # This logs and is happy. When I abstract this elsewhere, it doesn't log.
   myfile.initialize(filename=f'{safe_zip_name}.zip')
   myfile.copy_into(f'{safe_zip_name}.zip')
   myfile.commit()
-  
-   # This logs and is happy
-  log('myfile.path():')
   log(myfile.path())
-  
   
   output = f"<a href='{myfile.url_for()}'>file</a>\n\n<pre><code>{temp}\n\n---\n\n{test_output.stdout.decode('utf-8')}{test_output.stderr.decode('utf-8')}</code></pre>"
   
   background_response(output) #.stdout.decode('utf-8').strip())
+---
+event: delete_artifacts
+code: |
+  folder_name = get_folder_name()
+  safe_zip_name = get_zip_name(folder_name)
+  
+  import os
+  try:
+    os.remove(f'/tmp/{safe_zip_name}.zip')
+  except Exception as error:
+    log('removing ZIP error:')
+    log(error)
+  
+  import shutil
+  try:
+    shutil.rmtree(f'/tmp/{folder_name}')
+  except Exception as error:
+    log('removing FOLDER error:')
+    log(error)
+  
+  background_response('deleted')
+---
+code: |
+  import re
+  
+  def get_zip_name(folder_name):
+    return re.sub("( )+", "_", folder_name)
+---
+code: |
+  import json
+  
+  def get_folder_name():
+    with open('/tmp/runtime_config.json') as config:
+      folder_name = json.load(config)['artifacts_path']
+    return folder_name
 ---
 objects:
   - myfile: DAFile
@@ -118,86 +155,38 @@ code: |
 code: |
   zipped = False
 ---
-sets: myfile.initialized
-code: |
-  import json
-  import re
-  import subprocess
-
-  #if not artifacted:
-  with open('/tmp/runtime_config.json') as config:
-    folder_name = json.load(config)['artifacts_path']
-  artifacted = True
-
-  log('folder_name', 'console')
-  log(folder_name, 'console')
-  
-  #if not zipped:
-  safe_zip_name = re.sub("( )+", "_", folder_name)
-  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
-  zipped = True
-
-  log('zipped errors:', 'console')
-  log(contents.stderr.decode(), 'console')
-  
-  myfile.initialize(filename=f'{safe_zip_name}.zip')
-  log(1, 'console')
-  myfile.copy_into(f'/tmp/{safe_zip_name}.zip')
-  log(2, 'console')
-  myfile.commit()
-
-  log('myfile.path():', 'console')
-  log(myfile.path(), 'console')
-  
-  get_file = True
----
-comment: |
-  id: get path names
-  code: |
-    import json
-
-    def get_folder_name():
-      '''Gets the name of the current alkiln output
-         folder from the alkiln config file.'''
-      with open('/tmp/runtime_config.json') as config:
-        folder_name = json.load(config)['artifacts_path']
-
-      log('folder_name')
-      log(folder_name)
-
-      return folder_name
-  ---
-  id: zip
-  code: |
-    import subprocess
-    import re
-
-    def do_zip(folder_name):
-      '''Zips up the folder with the given name and returns
-         the name of the zip file.'''
-      safe_zip_name = re.sub("( )+", "_", folder_name)
-      contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
-
-      log('zipped errors:')
-      log(contents.stderr.decode())
-
-      return safe_zip_name
-  ---
-  id: initialize DAFile
-  code: |
-
-    def initialize_file(the_file, base_name):
-      '''Return the same given DAFile after initializing
-         it and giving it contents.'''
-      the_file.initialize(filename=f'{base_name}.zip')
-      the_file.initialized = True
-      the_file.copy_into(f'{base_name}.zip')
-      the_file.commit()
-
-      log('myfile.path():')
-      log(myfile.path())
-
-      return the_file
+#sets: myfile.initialized
+#code: |
+#  import json
+#  import re
+#  import subprocess
+#
+#  #if not artifacted:
+#  with open('/tmp/runtime_config.json') as config:
+#    folder_name = json.load(config)['artifacts_path']
+#  artifacted = True
+#
+#  log('folder_name', 'console')
+#  log(folder_name, 'console')
+#  
+#  #if not zipped:
+#  safe_zip_name = re.sub("( )+", "_", folder_name)
+#  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
+#  zipped = True
+#
+#  log('zipped errors:', 'console')
+#  log(contents.stderr.decode(), 'console')
+#  
+#  myfile.initialize(filename=f'{safe_zip_name}.zip')
+#  log(1, 'console')
+#  myfile.copy_into(f'/tmp/{safe_zip_name}.zip')
+#  log(2, 'console')
+#  myfile.commit()
+#
+#  log('myfile.path():', 'console')
+#  log(myfile.path(), 'console')
+#  
+#  get_file = True
 ---
 code: |
   from docassemble.webapp.files import SavedFile
@@ -221,6 +210,8 @@ question: |
   You need to log in
 subquestion: |
   To run these tests, you need to be logged into the server where you're keeping the package that you will test.
+  
+  When you've logged in, come back and refresh.
 ---
 id: test info
 comment: |  
@@ -268,29 +259,52 @@ fields:
 code: |
   start_time = current_datetime()
 ---
+reconsider: True
+code: |
+  current_time = current_datetime()
+  time_passed = current_time - start_time
+  #time_passed = date_difference(starting=start_time, ending=current_time)
+---
+prevent going back: True
 event: waiting_screen
+reload: True
 question: |
-  Hang tight.
-  Still waiting for an answer.
+  Hang tight. Still waiting for an answer.
 subquestion: |
-  This screen will reload every
-  ten seconds until the answer
-  is available.
+  This screen will reload every ten seconds until the answer is available.
   
   <i class="fas fa-spinner fa-spin"></i>
   
+#  ${ time_passed.minutes }min ${ time_passed.seconds }s 
 #  ${ date_difference( ending=current_datetime(), starting=as_datetime(start_time) ) }
   
-#  <script>
-#  let $time = $('<div id="timer"></div>');
-#  
-#  </script>
-reload: True
+#back button: True
+#buttons:
+#  - Back: refresh
+#  - Exit: exit
+#    url: https://ecosia.com
 ---
-event: final_screen
+prevent going back: True
 question: |
   The answer is
 subquestion: |
   
   ${ the_task.get() }
   
+fields:
+  - Delete generated files and folders: do_delete
+    datatype: yesnoradio
+---
+prevent going back: True
+id: wait for delete
+event: wait_for_delete
+reload: True
+question: |
+  Still deleting files and folders
+---
+prevent going back: True
+id: deleted
+event: deleted
+question: |
+  Files and folders deleted
+---
