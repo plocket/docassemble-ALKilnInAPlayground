@@ -10,6 +10,8 @@ comment: |
   - [x] Use dynamic project
   - [x] Use dynamic user id
   - [x] Use dynamic tags
+  
+  the_task.revoke() will terminate the task. If you only want to remove the task from the queue if it has not started running yet, you can set the optional keyword argument terminate to False.
 ---
 mandatory: True
 code: |
@@ -44,7 +46,6 @@ code: |
 ---
 event: do_delete
 code: |
-  delete_start_time
   delete_task
   if delete_task.ready():
     deleted
@@ -84,17 +85,19 @@ code: |
     subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
   if False:
+    installation = '<pre>\n<code>\n'
+    installation += '<h2 style="font-size: 1.5em">Installing ALKiln</h2>\n\n'  # TODO: Add version number
     outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     if outcome.returncode != 0:
-      temp = outcome.stderr.decode('utf-8')
+      installation += outcome.stderr.decode('utf-8')
     else:
-      temp = outcome.stdout.decode('utf-8')
+      installation += outcome.stdout.decode('utf-8')
+    installation += '</code>\n</pre>\n\n'
+    installation += '---\n\n'
   else:
-    temp = "not installing"
+    installation = ""
   
   server_url = url_of('root', _external=True)
-  log('================= server_url:')
-  log(server_url)
   
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
@@ -114,32 +117,31 @@ code: |
         DOCASSEMBLE_DEVELOPER_API_KEY="X"
     ))
     has_run_tests = True
-    
-  log(has_run_tests)
   
   # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
   # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
   
   folder_name = get_folder_name()
-  log(folder_name)
   safe_zip_name = get_zip_name(folder_name)
   contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
   
   # This logs and is happy. When I abstract this elsewhere, it doesn't log.
-  myfile.initialize(filename=f'{safe_zip_name}.zip')
-  myfile.copy_into(f'{safe_zip_name}.zip')
-  myfile.commit()
-  log(myfile.path())
+  zip_file = DAFile()
+  zip_file.initialize(filename=f'{safe_zip_name}.zip')
+  zip_file.copy_into(f'{safe_zip_name}.zip')
+  zip_file.commit()
   
   if (not got_files_html):
     files_html = get_files_html(folder_name)
     got_files_html = True
   
-  output = f'<a href=\'{myfile.url_for()}\'>All generated files zip</a>\n\n'
+  output = f'<a href=\'{zip_file.url_for()}\'><i class="fa-solid fa-file-zipper"></i> <span>Download all test files</span></a>\n\n'
   output += f'{files_html}\n\n'
-  output += f'<pre>\n<code>\n{temp}\n\n---\n\n'
+  output += installation
+  output += '<h2 style="font-size=1.5em;">Test report</h2>\n\n'
+  output += '<pre>\n<code>\n'
   output += f'{test_output.stdout.decode("utf-8")}{test_output.stderr.decode("utf-8")}\n'
-  output += f'</code>\n</pre>\n\n'
+  output += '</code>\n</pre>\n\n'
   output += f'{ action_button_html(url_action("do_delete"), label="Delete generated files") }'
   
   background_response(output) #.stdout.decode('utf-8').strip())
@@ -150,10 +152,15 @@ code: |
 code: |
   import os
   
+  def sort_by_name(item):
+    pass
+  
   def get_files_html(folder_name):
     '''Return html to show files in the artifacts folder.
         Syntax highlighting.'''
-    html = '<div>\n<h2 style="font-size: 1.2em">All tests</h2>\n<ul>\n'
+    html = '<div>\n'
+    html += '<h2 style="font-size: 1.2em">Files for all tests</h2>\n'
+    html += '<ul>\n'
     
     # Not recursive
     #for dirs_and_file_names in os.listdir(f'/tmp/{folder_name}'):
@@ -163,60 +170,58 @@ code: |
     top_dirs = []
     top_files = []
     
-    
     # collect names and paths
     with os.scandir(f'/tmp/{folder_name}') as scan:
       for dir_item in scan:
-        if dir_item.is_dir():
-          top_dirs.append(dir_item)
-        elif dir_item.is_file():
+        if dir_item.is_file():
           top_files.append(dir_item)
-          
+        elif dir_item.is_dir():
+          top_dirs.append(dir_item)
+    
     # Show files that are for the all the tests combined
     # This includes error screenshots
     # TODO: alkiln, when there are secrets on a page, show something in place of an error screenshot. Default image?
+    top_files.sort(key=lambda file: file.name)
     for file in top_files:
-      html += f'<li>\n<strong>{file.name}</strong>: {file.path}\n</li>\n'
+      html += get_file_html(name=file.name, path=file.path)
     
     # Show files in each Scenario
-    html += '</ul>\n<h2 style="font-size: 1.2em">Scenarios</h2>\n<ul>\n'
+    top_dirs.sort(key=lambda dir: dir.name)
+    html += '</ul>\n'
+    html += '<h2 style="font-size: 1.5em">Files for Scenarios</h2>\n'
+    html += '<ul>\n'
     for dir in top_dirs:
       html += '<li>\n'
-      html += f'<span><strong>{dir.name}</strong>: {dir.path}</span>\n'
-      #with os.walk(f'{dir.path}') as walk:
+      html += f'<i class="fas fa-folder"></i> <h3 style="font-size: 1.2em">{dir.name}</h3><span>: {dir.path}</span>\n'
       html += '<ul>\n'
       for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
+        file_names.sort()
         for file_name in file_names:
-          html += f'<li>\n{file_name}\n</li>\n'
+          abs_path = os.path.abspath(os.path.join(root_path, file_name))
+          html += get_file_html(name=file_name, path=abs_path)
       html += '</ul>\n'
       html += '</li>\n'
-    
-    #log(1)
-    #for root_path, dir_names, file_names in os.walk(f'/tmp/{folder_name}'):
-    #  html += '<li>\n'
-    #  for file_name in file_names:
-    #    # List the name of the file
-    #    html += f'<p>{file_name}</p>\n<p>'
-    #    
-    #    log(2)
-    #    # Show a DAFile for each file
-    #    da_file = DAFile()
-    #    log(3)
-    #    da_file.initialize(filename=f'{file_name}')
-    #    log(4)
-    #    abs_file_path = os.path.abspath(os.path.join(root_path, file_name))
-    #    da_file.copy_into(f'{abs_file_path}')
-    #    log(5)
-    #    da_file.commit()
-    #    log(f'6: {da_file.path()}')
-    #    html = f'<span>{da_file}</span>'
-    #    log(7)
-    #    
-    #  html += '\n</p>\n</li>\n'
       
     html += '</ul></div>'
     
-    log(html)
+    return html
+---
+code: |
+  def get_file_html(name='', path=''):
+    # Show a DAFile for each file
+    da_file = DAFile()
+    da_file.initialize(filename=f'{name}')
+    log(f'5: {path}')
+    #abs_file_path = os.path.abspath(os.path.join(path))
+    da_file.copy_into(f'{path}')
+    da_file.commit()
+    log(f'6: {da_file.url_for()}')
+
+    html = ''
+    if name.endswith('.txt'):
+      html += f'<li>\n{name} (<a target="_blank" href="{da_file.url_for()}">See raw text</a>)\n</li>\n'
+    else:
+      html += f'<li>\n<span>{name}:</span>\n<div><a target="_blank" href="{da_file.url_for()}">{da_file}</a></div>\n</li>\n'
     
     return html
 ---
@@ -254,10 +259,6 @@ code: |
     with open('/tmp/runtime_config.json') as config:
       folder_name = json.load(config)['artifacts_path']
     return folder_name
----
-# TODO: Get rid of this and do it in code
-objects:
-  - myfile: DAFile
 ---
 code: |
   from docassemble.webapp.files import SavedFile
@@ -335,7 +336,7 @@ subquestion: |
   
   <i class="fas fa-spinner fa-spin"></i>
   
-  Elapsed time: ${ str(test_time.delta) }
+  Elapsed time: ${ str(test_time.delta) } (Will refresh every 10 seconds)
 #  :${ test_time.seconds } 
   
 #  ${ format_time(date_difference( ending=current_datetime(), starting=test_start_time ), format='hh:mm:ss') } since the tests started
@@ -374,11 +375,13 @@ reload: True
 question: |
   Still deleting files and folders
 subquestion: |
-  Elapsed time: ${ str(delete_time.delta) }
+  Elapsed time: ${ str(delete_time.delta) } (Will refresh every 10 seconds)
 ---
 prevent going back: True
 id: deleted
 event: deleted
 question: |
-  Files and folders generated by alkiln are deleted
+  Cleaned up
+subquestion: |
+  Deleted all files and folders generated by ALKiln.
 ---
