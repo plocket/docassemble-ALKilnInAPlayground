@@ -1,11 +1,28 @@
 ---
 comment: |
+  alkiln-run --sources /my/dir/ --tags @1 and @2 --max_step_s 30
+  https://docs.python.org/3/library/argparse.html#example
+  alkiln-run --help
+  env vars don't want to change them a lot
+  minimist
+  
+  Current env var validation too simple. Maybe use _ORIGIN. Or validate where they're used. `setup.js` `session_vars.validate_setup_vars()`
+---
+comment: |
   TODO:
+  - [ ] Choose version of ALKiln with cached version
+  - [ ] Allow user to stop in the middle of the test and jump straight to output. See new `revoke`
   - [ ] Add project name env var. #513 PR.
   - [ ] test using default project
   - [ ] restart this session
   - [ ] start new session/interview
-  - [ ] delete generated files
+  - [ ] Bug: deleting goes back to output page before going to end
+  - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
+  - [ ] Style results page. Scenario background color?
+  - [ ] Set other env vars (like max time per step)
+
+  DONE:
+  - [x] Delete /tmp files after copying into da files (doesn't keep the folder structure, but I guess the zip does)
   - [x] Use dynamic server url
   - [x] Use dynamic project
   - [x] Use dynamic user id
@@ -13,11 +30,13 @@ comment: |
   
   the_task.revoke() will terminate the task. If you only want to remove the task from the queue if it has not started running yet, you can set the optional keyword argument terminate to False.
 ---
+features:
+  css: alkiln_through_interview.css
+---
 mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
-  #wants_tags
   
   #test for stackoverflow question
   #if stackoverflow:
@@ -28,45 +47,29 @@ code: |
   #time_passed
   #waiting_screen
   
-  wants_tags
-  #test_start_time
+  tag_expression
+  test_start_time
   the_task
-  #if the_task.wait():  # Will cause a timeout
+  #if the_task.wait():  # WILL cause a timeout
   if the_task.ready():  # Won't cause a timeout
     show_output
-    #if do_delete:
-    #  delete_task
-    #  if delete_task.ready():
-    #    deleted
-    #  else:
-    #    wait_for_delete
-    pass
   else:
     waiting_screen
----
-event: do_delete
-code: |
-  delete_task
-  if delete_task.ready():
-    deleted
-  else:
-    wait_for_delete
-  finish_delete_artifacts_flow = True
 ---
 id: stackoverflow
 question: |
   Stackoverflow question
 fields:
-  - What file do you run to start the interview you want to test?: stackoverflow
+  - Foo: stackoverflow
 ---
 code: |
   the_task = background_action('bg_task')
 ---
 code: |
-  delete_task = background_action('delete_artifacts')
+  has_run_tests = False
 ---
 code: |
-  has_run_tests = False
+  has_installed_alkiln = False
 ---
 event: bg_task
 needs:
@@ -84,16 +87,32 @@ code: |
   if False:
     subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
-  if False:
-    installation = '<pre>\n<code>\n'
-    installation += '<h2 style="font-size: 1.5em">Installing ALKiln</h2>\n\n'  # TODO: Add version number
+  if False and not has_installed_alkiln:
+    installation = '<h2>Installing ALKiln</h2>\n'  # TODO: Add version number
+    installation += '<pre>\n<code>\n'
+    # Get current version (or commit sha if want to be consistent with GitHub and use one source of truth) (maybe can't get commit sha from npm installed version if we install from a branch)
+    # TODO: (maybe) Get git commit, detect git commit npm version, install npm version. SO MUCH MORE WORK.
+    # But then we need (for users) a place where we're listing commit sha's and their respective npm versions or a pointer to how to look that up. So people can use the same version everywhere they're running it.
+    # Problem: on GitHub users will be using the commit sha to specifiy the version of ALKiln to use. When they come to this interview, how will they know what to set to make sure they're using the same version here?
+    # * Save the git commit elsewhere when they input it.
+    # Should we let them install via npm version optionally instead?
+    # Avoiding npm version makes it much harder to update packages to new versions. So we won't have one source of truth.
+    # TODO: Document this weird behavior somewhere. Maybe an 'advanced' page of the documentation.
+    
+    # Store the input of the version somewhere on their server
+    # What file? txt file?
+    # Also, what if they want to install `latest`? How do we check that a version is up to date?
+    # https://stackoverflow.com/questions/11949419/npm-how-to-show-the-latest-version-of-a-package
+    
+    # Have to at least report the version
     outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     if outcome.returncode != 0:
       installation += outcome.stderr.decode('utf-8')
     else:
       installation += outcome.stdout.decode('utf-8')
-    installation += '</code>\n</pre>\n\n'
+    installation += '</code>\n</pre>\n'
     installation += '---\n\n'
+    has_installed_alkiln = True
   else:
     installation = ""
   
@@ -106,8 +125,8 @@ code: |
       check=False,
       capture_output=True,
       env=dict(os.environ,
-        _ORIGIN='interview',
         SERVER_URL=server_url,
+        _ORIGIN='interview',
         _PROJECT_NAME=project_name,
         _USER_ID=f'{user_info().id}',
         _TAGS=tag_expression,
@@ -122,27 +141,36 @@ code: |
   # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
   
   folder_name = get_folder_name()
-  safe_zip_name = get_zip_name(folder_name)
-  contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
-  
-  # This logs and is happy. When I abstract this elsewhere, it doesn't log.
-  zip_file = DAFile()
-  zip_file.initialize(filename=f'{safe_zip_name}.zip')
-  zip_file.copy_into(f'{safe_zip_name}.zip')
-  zip_file.commit()
   
   if (not got_files_html):
     files_html = get_files_html(folder_name)
     got_files_html = True
   
-  output = f'<a href=\'{zip_file.url_for()}\'><i class="fa-solid fa-file-zipper"></i> <span>Download all test files</span></a>\n\n'
-  output += f'{files_html}\n\n'
+  output = '<div id="alkiln_test_output">\n'
+  output += '<div class="section">\n'
+  output += '<a href="#report">Tap to see full console printout below</a>\n'
+  output += '</div>\n'
+  output += f'{files_html}\n'
   output += installation
-  output += '<h2 style="font-size=1.5em;">Test report</h2>\n\n'
+  output += '<h2 id="report">Test report</h2>\n'
   output += '<pre>\n<code>\n'
   output += f'{test_output.stdout.decode("utf-8")}{test_output.stderr.decode("utf-8")}\n'
-  output += '</code>\n</pre>\n\n'
-  output += f'{ action_button_html(url_action("do_delete"), label="Delete generated files") }'
+  output += '</code>\n</pre>\n'
+  output += '</div>\n'
+  
+  safe_zip_name = get_zip_name(folder_name)
+  try:
+    os.remove(f'/tmp/{safe_zip_name}.zip')
+  except Exception as error:
+    log('error removing ZIP:')
+    log(error)
+  
+  import shutil
+  try:
+    shutil.rmtree(f'/tmp/{folder_name}')
+  except Exception as error:
+    log('error removing FOLDER:')
+    log(error)
   
   background_response(output) #.stdout.decode('utf-8').strip())
 ---
@@ -152,25 +180,36 @@ code: |
 code: |
   import os
   
-  def sort_by_name(item):
-    pass
-  
   def get_files_html(folder_name):
     '''Return html to show files in the artifacts folder.
-        Syntax highlighting.'''
-    html = '<div>\n'
-    html += '<h2 style="font-size: 1.2em">Files for all tests</h2>\n'
-    html += '<ul>\n'
+       Syntax highlighting.'''
     
-    # Not recursive
-    #for dirs_and_file_names in os.listdir(f'/tmp/{folder_name}'):
-    #  html += f'<li>\n{dir}\n</li>\n'
+    html = ''
     
-    # Not recursive
+    safe_zip_name = get_zip_name(folder_name)
+    contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
+
+    # This logs and is happy. When I abstract this elsewhere, it doesn't log.
+    zip_file = DAFile()
+    zip_file.initialize(filename=f'{safe_zip_name}.zip')
+    zip_file.copy_into(f'{safe_zip_name}.zip')
+    zip_file.commit()
+    
+    # Zip section
+    html += '<div class="section zip">\n'
+    html += f'{ action_button_html(zip_file.url_for(), label="Download all test files", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
+    html += '</div>\n'
+    
+    # Start top-level output section
+    html += '<div class="section top_level">\n'
+    html += '<h2>Output for all tests</h2>\n'
+    html += '<div class="output card card-body">\n'
+    
+    # collect names and paths.
     top_dirs = []
     top_files = []
     
-    # collect names and paths
+    # A bit faster than other methods. https://stackoverflow.com/a/62478211/14144258
     with os.scandir(f'/tmp/{folder_name}') as scan:
       for dir_item in scan:
         if dir_item.is_file():
@@ -181,28 +220,86 @@ code: |
     # Show files that are for the all the tests combined
     # This includes error screenshots
     # TODO: alkiln, when there are secrets on a page, show something in place of an error screenshot. Default image?
+    top_images_html = ''
+    top_other_files_html = ''
     top_files.sort(key=lambda file: file.name)
     for file in top_files:
-      html += get_file_html(name=file.name, path=file.path)
+      if file.name.endswith('.jpg'):
+        top_images_html += get_file_html(name=file.name, path=file.path)
+      else:
+        top_other_files_html += get_file_html(name=file.name, path=file.path)
+    
+    # At least report and debug log
+    html += f'<ul class="text_files">\n{top_other_files_html}\n</ul>\n'
+    if top_images_html != '':
+      html += '<hr>\n'
+      html += f'<ul class="images">\n{top_images_html}\n</ul>\n'
+    
+    # End top-level output contents
+    html += '</div>\n'
+    # End top-level output section
+    html += '</div>\n'
+    
+    # Start all Scenarios
+    html += '<div class="section scenarios">\n'
     
     # Show files in each Scenario
     top_dirs.sort(key=lambda dir: dir.name)
-    html += '</ul>\n'
-    html += '<h2 style="font-size: 1.5em">Files for Scenarios</h2>\n'
-    html += '<ul>\n'
+    html += '<h2>Output for Scenarios</h2>\n'
+    
+    # For each Scenario
     for dir in top_dirs:
-      html += '<li>\n'
-      html += f'<i class="fas fa-folder"></i> <h3 style="font-size: 1.2em">{dir.name}</h3><span>: {dir.path}</span>\n'
-      html += '<ul>\n'
+    
+      html += '<div class="output card card-body scenario">\n'
+      html += f'<h3>Scenario: {dir.name}</h3>\n'
+      
+      # Get the files in that Scenario
       for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
         file_names.sort()
+        
+        # This is not really how we should organize them. Eventually
+        # organize them by type: report, error, screenshots, downloaded
+        # Maybe by timestamp instead of by name?
+        
+        text_files_html = ''
+        images_html = ''
+        templates_html = ''
+        other_files_html = ''
+        
         for file_name in file_names:
           abs_path = os.path.abspath(os.path.join(root_path, file_name))
-          html += get_file_html(name=file_name, path=abs_path)
-      html += '</ul>\n'
-      html += '</li>\n'
+          file_html = get_file_html(name=file_name, path=abs_path)
+          
+          if file_name.endswith('.txt'):
+            text_files_html += file_html
+          elif file_name.endswith('.jpg'):
+            images_html += file_html
+          elif file_name.endswith('.pdf') or file_name.endswith('.docx'):
+            templates_html += file_html
+          else:
+            # Not sure what these'll be
+            other_files_html += file_html
+        
+        # Text files come in a list first. Report will at least be there
+        html += f'<ul class="text_files">\n{text_files_html}\n</ul>\n'
+        # Downloaded pdfs and docxs come next (TODO: any downloaded files)
+        if templates_html != '':
+          html += '<hr>\n'
+          html += f'<ul class="templates">\n{templates_html}\n</ul>\n'
+        # Images come last (TODO: split any error image out)
+        if images_html != '':
+          html += '<hr>\n'
+          # Ordered list because timing does matter a bit with these
+          # Moreso once we have story table screenshots
+          html += f'<ol class="images">\n{images_html}\n</ol>\n'
+        if other_files_html != '':
+          html += '<hr>\n'
+          html += f'<ul class="other_files">\n{other_files_html}\n</ul>\n'
+      # End one Scenario
+      html += '</div>\n'
       
-    html += '</ul></div>'
+    # End all Scenarios
+    html += '</div>\n'
     
     return html
 ---
@@ -211,40 +308,17 @@ code: |
     # Show a DAFile for each file
     da_file = DAFile()
     da_file.initialize(filename=f'{name}')
-    log(f'5: {path}')
     #abs_file_path = os.path.abspath(os.path.join(path))
     da_file.copy_into(f'{path}')
     da_file.commit()
-    log(f'6: {da_file.url_for()}')
-
-    html = ''
+    
     if name.endswith('.txt'):
-      html += f'<li>\n{name} (<a target="_blank" href="{da_file.url_for()}">See raw text</a>)\n</li>\n'
+      html = f'<li>\n{name} (<a target="_blank" href="{da_file.url_for()}">tap to see raw text <i class="fas fa-external-link"></i></a>)\n</li>\n'
     else:
-      html += f'<li>\n<span>{name}:</span>\n<div><a target="_blank" href="{da_file.url_for()}">{da_file}</a></div>\n</li>\n'
+      da_file.set_alt_text(f'The image for {name}.')
+      html = f'<li class="image">\n<span>{name} (<a target="_blank" href="{da_file.url_for()}">tap to see file <i class="fas fa-external-link"></i></a>)</span>\n<div><a target="_blank" href="{da_file.url_for()}">{da_file}</a></div>\n</li>\n'
     
     return html
----
-event: delete_artifacts
-code: |
-  folder_name = get_folder_name()
-  safe_zip_name = get_zip_name(folder_name)
-  
-  import os
-  try:
-    os.remove(f'/tmp/{safe_zip_name}.zip')
-  except Exception as error:
-    log('removing ZIP error:')
-    log(error)
-  
-  import shutil
-  try:
-    shutil.rmtree(f'/tmp/{folder_name}')
-  except Exception as error:
-    log('removing FOLDER error:')
-    log(error)
-  
-  background_response('deleted')
 ---
 code: |
   import re
@@ -295,15 +369,11 @@ comment: |
   
   ${ user_info().filename }
 question: |
-  How much shall I add to 553?
-subquestion: |
-  Not spinning: <i class="fas fa-spinner fa-spin"></i>
-  
+  Run ALKiln tests
 fields:
-  - Do you want to use tags?: wants_tags
-    datatype: yesnoradio
-  - What tags do you want to use? Use a tag expression: tag_expression
-    show if: wants_tags
+  - note: |
+      You can add tags using a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions). You can also leave this blank.
+  - What tags do you want to use?: tag_expression
   - note: |
       The code you want to test should be in a Project on your Playground
   - What Project is the code in?: project_name
@@ -312,11 +382,6 @@ fields:
       code: |
         [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
 #+ [['', 'Default']]
----
-if:
-  - not wants_tags
-code: |
-  tag_expression = ''
 ---
 code: |
   test_start_time = current_datetime()
@@ -330,16 +395,13 @@ prevent going back: True
 event: waiting_screen
 reload: True
 question: |
-  Hang tight. Still waiting for an answer.
+  Hang tight. ALKiln is running the tests.
 subquestion: |
-  This screen will reload every ten seconds until the answer is available.
+  This screen will reload every 10 seconds until the tests are done.
   
   <i class="fas fa-spinner fa-spin"></i>
   
-  Elapsed time: ${ str(test_time.delta) } (Will refresh every 10 seconds)
-#  :${ test_time.seconds } 
-  
-#  ${ format_time(date_difference( ending=current_datetime(), starting=test_start_time ), format='hh:mm:ss') } since the tests started
+  **Elapsed time: ${ str(test_time.delta) }** (Refreshes every 10 seconds)
   
 # experiment for stack overflow question
 #back button: True
@@ -351,37 +413,11 @@ subquestion: |
 prevent going back: True
 event: show_output
 question: |
-  The answer is
+  ALKiln output
 subquestion: |
   
   ${ the_task.get() }
-  
-#fields:
-#  - Delete generated files and folders: do_delete
-#    datatype: yesnoradio
----
-code: |
-  delete_start_time = current_datetime()
----
-reconsider: True
-code: |
-  # Deliberately explicit about the end time
-  delete_time = date_difference( ending=current_datetime(), starting=test_start_time )
----
-prevent going back: True
-id: wait for delete
-event: wait_for_delete
-reload: True
-question: |
-  Still deleting files and folders
-subquestion: |
-  Elapsed time: ${ str(delete_time.delta) } (Will refresh every 10 seconds)
----
-prevent going back: True
-id: deleted
-event: deleted
-question: |
-  Cleaned up
-subquestion: |
-  Deleted all files and folders generated by ALKiln.
+
+buttons:
+  - Run new tests: new_session
 ---
