@@ -28,7 +28,7 @@ comment: |
   - [x] Use dynamic user id
   - [x] Use dynamic tags
   
-  the_task.revoke() will terminate the task. If you only want to remove the task from the queue if it has not started running yet, you can set the optional keyword argument terminate to False.
+  test_run_output.revoke() will terminate the task. If you only want to remove the task from the queue if it has not started running yet, you can set the optional keyword argument terminate to False.
 ---
 features:
   css: alkiln_through_interview.css
@@ -37,33 +37,23 @@ mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
-  
-  #test for stackoverflow question
-  #if stackoverflow:
-  #  undefine('stackoverflow')
-  #  force_ask('waiting_screen')
-  
-  # Try to get timer going
-  #time_passed
-  #waiting_screen
-  
   tag_expression
+  # Try to get stopwatch going
   test_start_time
-  the_task
-  #if the_task.wait():  # WILL cause a timeout
-  if the_task.ready():  # Won't cause a timeout
+  test_run_output
+  # `.wait()` WILL cause a timeout
+  if test_run_output.ready():  # Won't cause a timeout
     show_output
   else:
     waiting_screen
 ---
-id: stackoverflow
-question: |
-  Stackoverflow question
-fields:
-  - Foo: stackoverflow
+event: stop_tests_early
+code: |
+  log('stopping tests', 'console')
+  test_run_output.revoke()
 ---
 code: |
-  the_task = background_action('bg_task')
+  test_run_output = background_action('run_alkiln')
 ---
 code: |
   has_run_tests = False
@@ -71,7 +61,7 @@ code: |
 code: |
   has_installed_alkiln = False
 ---
-event: bg_task
+event: run_alkiln
 needs:
   - has_run_tests
   - get_folder_name
@@ -88,6 +78,8 @@ code: |
     subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
   if False and not has_installed_alkiln:
+    
+    # TODO: Add version number here
     installation = '<h2>Installing ALKiln</h2>\n'  # TODO: Add version number
     installation += '<pre>\n<code>\n'
     # Get current version (or commit sha if want to be consistent with GitHub and use one source of truth) (maybe can't get commit sha from npm installed version if we install from a branch)
@@ -374,6 +366,7 @@ fields:
   - note: |
       You can add tags using a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions). You can also leave this blank.
   - What tags do you want to use?: tag_expression
+    required: False
   - note: |
       The code you want to test should be in a Project on your Playground
   - What Project is the code in?: project_name
@@ -403,12 +396,8 @@ subquestion: |
   
   **Elapsed time: ${ str(test_time.delta) }** (Refreshes every 10 seconds)
   
-# experiment for stack overflow question
-#back button: True
-#buttons:
-#  - Back: refresh
-#  - Exit: exit
-#    url: https://ecosia.com
+buttons:
+  - Stop tests early: stop_tests_early
 ---
 prevent going back: True
 event: show_output
@@ -416,7 +405,7 @@ question: |
   ALKiln output
 subquestion: |
   
-  ${ the_task.get() }
+  ${ test_run_output.get() }
 
 buttons:
   - Run new tests: new_session
