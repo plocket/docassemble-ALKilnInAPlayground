@@ -12,6 +12,7 @@ comment: |
   TODO:
   - [ ] Choose version of ALKiln with cached version
   - [ ] Allow user to stop in the middle of the test and jump straight to output. See new `revoke`
+  - [ ] Clean up files no matter what
   - [ ] Add project name env var. #513 PR.
   - [ ] test using default project
   - [ ] restart this session
@@ -37,29 +38,39 @@ mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
+  not_wants_tags
   tag_expression
-  # Try to get stopwatch going
+  # Get stopwatch going
   test_start_time
   test_run_output
   # `.wait()` WILL cause a timeout
-  if test_run_output.ready():  # Won't cause a timeout
+  if stopped_early \
+      or test_run_output.ready():  # Won't cause a timeout
+    run_get_files_html
+    remove_tmp_files
     show_output
   else:
     waiting_screen
 ---
 event: stop_tests_early
 code: |
-  log('stopping tests', 'console')
+  stopped_early = True
   test_run_output.revoke()
 ---
 code: |
-  test_run_output = background_action('run_alkiln')
+  stopped_early = False
+---
+code: |
+  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
 code: |
   has_run_tests = False
 ---
 code: |
   has_installed_alkiln = False
+---
+code: |
+  got_files_html = False
 ---
 event: run_alkiln
 needs:
@@ -81,7 +92,7 @@ code: |
     
     # TODO: Add version number here
     installation = '<h2>Installing ALKiln</h2>\n'  # TODO: Add version number
-    installation += '<pre>\n<code>\n'
+    installation += '<div class="section"><pre>\n<code>\n'
     # Get current version (or commit sha if want to be consistent with GitHub and use one source of truth) (maybe can't get commit sha from npm installed version if we install from a branch)
     # TODO: (maybe) Get git commit, detect git commit npm version, install npm version. SO MUCH MORE WORK.
     # But then we need (for users) a place where we're listing commit sha's and their respective npm versions or a pointer to how to look that up. So people can use the same version everywhere they're running it.
@@ -102,7 +113,7 @@ code: |
       installation += outcome.stderr.decode('utf-8')
     else:
       installation += outcome.stdout.decode('utf-8')
-    installation += '</code>\n</pre>\n'
+    installation += '</code>\n</pre></div>\n'
     installation += '---\n\n'
     has_installed_alkiln = True
   else:
@@ -132,45 +143,28 @@ code: |
   # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
   # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
   
-  folder_name = get_folder_name()
+  log('=================== finished run')
   
-  if (not got_files_html):
-    files_html = get_files_html(folder_name)
-    got_files_html = True
-  
-  output = '<div id="alkiln_test_output">\n'
-  output += '<div class="section">\n'
-  output += '<a href="#report">Tap to see full console printout below</a>\n'
-  output += '</div>\n'
-  output += f'{files_html}\n'
+  output = '<div class="console_output">\n'
   output += installation
+  output += '<div class="section">\n'
   output += '<h2 id="report">Test report</h2>\n'
   output += '<pre>\n<code>\n'
   output += f'{test_output.stdout.decode("utf-8")}{test_output.stderr.decode("utf-8")}\n'
   output += '</code>\n</pre>\n'
   output += '</div>\n'
+  output += '</div>\n'
   
-  safe_zip_name = get_zip_name(folder_name)
-  try:
-    os.remove(f'/tmp/{safe_zip_name}.zip')
-  except Exception as error:
-    log('error removing ZIP:')
-    log(error)
-  
-  import shutil
-  try:
-    shutil.rmtree(f'/tmp/{folder_name}')
-  except Exception as error:
-    log('error removing FOLDER:')
-    log(error)
-  
-  background_response(output) #.stdout.decode('utf-8').strip())
+  background_response(output)
 ---
 code: |
-  got_files_html = False
+  folder_name = get_folder_name()
+  files_html = get_files_html(folder_name)
+  run_get_files_html = True
 ---
 code: |
   import os
+  import subprocess
   
   def get_files_html(folder_name):
     '''Return html to show files in the artifacts folder.
@@ -179,17 +173,17 @@ code: |
     html = ''
     
     safe_zip_name = get_zip_name(folder_name)
-    contents = subprocess.run(['zip', '-r', safe_zip_name, folder_name], check=False, capture_output=True)
-
-    # This logs and is happy. When I abstract this elsewhere, it doesn't log.
-    zip_file = DAFile()
-    zip_file.initialize(filename=f'{safe_zip_name}.zip')
-    zip_file.copy_into(f'{safe_zip_name}.zip')
-    zip_file.commit()
+    ls = subprocess.run(['ls', '/tmp'], check=False, capture_output=True)
+    zip_process = subprocess.run(['zip', '-r', f'/tmp/{safe_zip_name}', f'/tmp/{folder_name}'], check=False, capture_output=True)
+    log(f'Zip creation error if any: ${zip_process.stderr.decode()}')
+    zip_da_file = DAFile()
+    zip_da_file.initialize(filename=f'{safe_zip_name}.zip')
+    zip_da_file.copy_into(f'/tmp/{safe_zip_name}.zip')
+    zip_da_file.commit()
     
     # Zip section
     html += '<div class="section zip">\n'
-    html += f'{ action_button_html(zip_file.url_for(), label="Download all test files", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
+    html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
     html += '</div>\n'
     
     # Start top-level output section
@@ -201,7 +195,7 @@ code: |
     top_dirs = []
     top_files = []
     
-    # A bit faster than other methods. https://stackoverflow.com/a/62478211/14144258
+    # A bit faster than other methods, though that doesn't matter much. https://stackoverflow.com/a/62478211/14144258
     with os.scandir(f'/tmp/{folder_name}') as scan:
       for dir_item in scan:
         if dir_item.is_file():
@@ -313,6 +307,25 @@ code: |
     return html
 ---
 code: |
+  import os
+  
+  safe_zip_name = get_zip_name(folder_name)
+  try:
+    os.remove(f'/tmp/{safe_zip_name}.zip')
+  except Exception as error:
+    log('error removing ZIP:')
+    log(error)
+  
+  import shutil
+  try:
+    shutil.rmtree(f'/tmp/{folder_name}')
+  except Exception as error:
+    log('error removing FOLDER:')
+    log(error)
+  
+  remove_tmp_files = True
+---
+code: |
   import re
   
   def get_zip_name(folder_name):
@@ -352,20 +365,16 @@ subquestion: |
   When you've logged in, come back and refresh.
 ---
 id: test info
-comment: |  
-  ${ user_info().id }
-  
-  ${ get_list_of_projects( user_info().id ) }
-  
-  ${ user_info().package }
-  
-  ${ user_info().filename }
 question: |
   Run ALKiln tests
 fields:
   - note: |
-      You can add tags using a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions). You can also leave this blank.
+      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
+  - I do NOT want to use tags: not_wants_tags
+    datatype: yesno
   - What tags do you want to use?: tag_expression
+    disable if: not_wants_tags
+    # Doesn't matter if they leave it blank
     required: False
   - note: |
       The code you want to test should be in a Project on your Playground
@@ -375,6 +384,19 @@ fields:
       code: |
         [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
 #+ [['', 'Default']]
+comment: |  
+  ${ user_info().id }
+  
+  ${ get_list_of_projects( user_info().id ) }
+  
+  ${ user_info().package }
+  
+  ${ user_info().filename }
+---
+if:
+  - not_wants_tags
+code: |
+  tag_expression = ''
 ---
 code: |
   test_start_time = current_datetime()
@@ -396,16 +418,35 @@ subquestion: |
   
   **Elapsed time: ${ str(test_time.delta) }** (Refreshes every 10 seconds)
   
-buttons:
-  - Stop tests early: stop_tests_early
+action buttons:
+  - label: Stop tests early
+    action: stop_tests_early
 ---
 prevent going back: True
 event: show_output
 question: |
   ALKiln output
 subquestion: |
+
+  <div id="alkiln_test_output">
   
+  <div class="section elapsed_time">
+  Elapsed time: <b>${ str(date_difference( ending=current_datetime(), starting=test_start_time ).delta) }</b>
+  </div>
+  
+  % if not stopped_early:
+  <div class="section">
+  <a href="#report">Tap to see full console printout below</a>
+  </div>
+  % endif
+  
+  ${ files_html }
+  
+  % if not stopped_early:
   ${ test_run_output.get() }
+  % endif
+  
+  </div>
 
 buttons:
   - Run new tests: new_session
