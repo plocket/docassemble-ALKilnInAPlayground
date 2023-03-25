@@ -10,17 +10,18 @@ comment: |
 ---
 comment: |
   TODO:
-  - [ ] Choose version of ALKiln with cached version
-  - [ ] Show ALKiln version to user
+  - [ ] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
   - [ ] Use background action args
   - [ ] Add project name env var. #513 PR.
   - [ ] Allwo testing default project
-  - [ ] Add restart this session
+  - [ ] Add restart this session?
   - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
   - [ ] Set other env vars (like max time per step)
-  - [ ] Get partial console output from early-stopped tests (impossible?)
+  - [ ] Get partial console output from early-stopped tests (impossible until Flask?)
 
   DONE:
+  - [x] Choose version of ALKiln with cached version
+  - [x] Show ALKiln version to user
   - [x] Clean up files no matter what
   - [x] Allow user to stop in the middle of the test and jump straight to output. See new `revoke`
   - [x] [auto deleting now] Bug: deleting goes back to output page before going to end
@@ -44,7 +45,7 @@ code: |
   # npm list -g <package> - can't find it
   
   if version_error == '':
-    if wants_install:
+    if ask_version and wants_install:
       alkiln_installation_output
       # `.wait()` could cause a timeout
       if alkiln_installation_output.ready():
@@ -55,8 +56,8 @@ code: |
   
   not_wants_tags
   tag_expression
-  test_run_output
   
+  test_run_output
   if stopped_early or test_run_output.ready():
     run_get_files_html
     remove_tmp_files
@@ -158,24 +159,26 @@ code: |
   # Have to at least report the version
   #outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
   
-  to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
-  install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+  if not did_install:
+    to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
+    install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+    did_install = True
+    
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
     log('=== ALKiln === Error: installation failed:')
     log(result)
     # Cause error
     install_output.check_returncode()
-    #html += install_output.stderr.decode('utf-8')
   else:
     result = install_output.stdout.decode('utf-8')
     log('=== ALKiln === Installation succeeded:')
     log(result)
-    #html += install_output.stdout.decode('utf-8')
-  #html += '</code>\n</pre></div>\n'
-  #html += '---\n\n'
 
   background_response(result)
+---
+code: |
+  did_install = False
 ---
 #id: flag_failed_installation
 #event: flag_failed_installation
@@ -364,7 +367,6 @@ code: |
 code: |
   import os
   
-  log('removing zip', 'console')
   safe_zip_name = get_zip_name(folder_name)
   try:
     os.remove(f'/tmp/{safe_zip_name}.zip')
@@ -372,7 +374,6 @@ code: |
     log('=== ALKiln === Error removing ZIP:')
     log(error)
   
-  log('removing folder', 'console')
   import shutil
   try:
     log('a', 'console')
@@ -412,13 +413,7 @@ code: |
   def get_list_of_projects(user_id):
     playground = SavedFile(user_id, fix=False, section='playground')
     return playground.list_of_dirs()
-    
-  #def get_project_file_paths(user_id, section='playground', project='default'):
-  #  area = SavedFile(user_id, fix=True, section=section)
-  #  the_directory = directory_for(area, project)
-  #  files = [os.path.join(the_directory, file) for file in os.listdir(the_directory) if os.path.isfile(os.path.join(the_directory, file))]
-  #  # Maybe remove the `.placeholder` file, here or later
-  #  return files
+  
 ---
 event: ask_to_log_in
 id: not logged in
@@ -428,6 +423,8 @@ subquestion: |
   To run these tests, you need to be logged into the server where you're keeping the package that you will test.
   
   When you've logged in, come back and refresh.
+buttons:
+  Log into this server: signin
 ---
 code: |
   import subprocess
@@ -446,15 +443,55 @@ code: |
     alkiln_version_list = alkiln_flip_order
     version_error = ''
 ---
-id: which task
+code: |
+  import subprocess
+  import re
+  
+  def get_installed_version():
+    '''Returns string to print for the version number.
+       Can be some kind of error message. '''
+    # https://stackoverflow.com/a/13332300
+    packages = subprocess.run(['npm', 'list', '-g', '--prefix', '/var/www/.npm-global', '--depth', '0', '-p', '-l'], check=False, capture_output=True)
+    # What would cause an error here?
+    if result.returncode != 0:
+      log('=== ALKiln === Error getting server ALKiln version:')
+      log(packages.stderr.decode("utf-8"))
+      server_version = 'Error getting server ALKiln version'
+    else:
+      pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
+      matches = re.search(pattern, packages.stdout.decode())
+      if matches == None:
+        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln.'
+      else:
+        server_version = matches.group(1)
+        del matches # cannot pickle error otherwise
+    return server_version
+---
+id: which task with no alkiln installed
+if: |
+  'Could not find' in get_installed_version()
+question: |
+  Install ALKiln
+subquestion: |
+  It looks like you're running ALKiln tests for the first time on this server. Which version of ALKiln do you want to install? The top choice is the most recent version.
+fields:
+  - ALKiln version: version_to_install
+    choices:
+      code: |
+        alkiln_version_list
+continue button field: ask_version
+---
+id: which task with prexisting version
+if: |
+  not 'Could not find' in get_installed_version()
 question: |
   What do you want to do first?
 subquestion: |
-  Your version of ALKiln is
+  The server's current version of ALKiln is:
   
-  **Some version**
+  **${ get_installed_version() }**
   
-  Do you want to install a new version before testing?
+  Do you want to install a new version of ALKiln before testing?
 fields:
   - no label: wants_install
     input type: radio
@@ -466,6 +503,10 @@ fields:
     choices:
       code: |
         alkiln_version_list
+continue button field: ask_version
+---
+code: |
+  wants_install = False
 ---
 code: |
   install_start = current_datetime()
@@ -481,20 +522,23 @@ subquestion: |
 ---
 id: test info
 question: |
-  Run ALKiln vN tests
+  Run ALKiln tests
 subquestion: |
-  
   % if install_failed:
   <p class="alert alert-warning">
-  Warning: ALKiln installation failed. You can still run your tests with the previous version you had installed. To see more, check <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">your worker.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. You can try installing again later.
+  Warning: ALKiln installation failed. You can still run your tests with the previous version you had installed. To see more, check <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">your worker.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. If you want to use a different version of ALKiln, you'll have to try again later.
   </p>
   % endif
 
   % if version_error != '':
   <p class="alert alert-warning">
-  Warning: Usually you would have seen an option to install a different version of ALKiln. We skipped that screen because there was a problem getting information from the npm servers. You can check the output of the error in <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">your docassemble.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. You can try installing again later.
+  Warning: Usually you would have seen an option to install a different version of ALKiln. We skipped that screen because there was a problem getting information from the npm servers. You can check the output of the error in <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">your docassemble.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. If you want to use a different version of ALKiln, you'll have to try again later.
   </p>
   % endif
+  
+  You can run your tests with this version of ALKiln:
+  
+  ${ get_installed_version() }
 fields:
   - note: |
       You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
@@ -558,6 +602,18 @@ subquestion: |
 
   <div id="alkiln_test_output">
   
+  % if stopped_early:
+  <p class="alert alert-warning">
+  Warning: You stopped the tests early. Below is the information the tests collected so far.
+  </p>
+  % endif
+  
+  <div class="section version">
+  Ran with this version of ALKiln:
+  
+  ${ get_installed_version() }
+  </div>
+  
   <div class="section elapsed_time">
   Elapsed time: <b>${ str(date_difference( ending=current_datetime(), starting=test_start_time ).delta) }</b>
   </div>
@@ -569,8 +625,8 @@ subquestion: |
   % endif
   
   % if file_problem:
-  <p class="alert alert-error">
-  The installed version of ALKiln did not create any output which means the tests were not able to run. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">your worker.log</a> or <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">your docassemble.log</a> might have more information.
+  <p class="alert alert-danger">
+  The installed version of ALKiln did not create any output which means the tests did not run. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log"> worker.log</a> or your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">docassemble.log</a> might have more information.
   </p>
   % else:
   ${ files_html }
