@@ -3,33 +3,34 @@ comment: |
   alkiln-run --sources /my/dir/ --tags @1 and @2 --max_step_s 30
   https://docs.python.org/3/library/argparse.html#example
   alkiln-run --help
-  env vars don't want to change them a lot
-  minimist
+  env vars - don't want to change them a lot
+  minimist - lib for parsing cli args?
   
   Current env var validation too simple. Maybe use _ORIGIN. Or validate where they're used. `setup.js` `session_vars.validate_setup_vars()`
 ---
 comment: |
   TODO:
   - [ ] Choose version of ALKiln with cached version
-  - [ ] Allow user to stop in the middle of the test and jump straight to output. See new `revoke`
-  - [ ] Clean up files no matter what
+  - [ ] Show ALKiln version to user
+  - [ ] Use background action args
   - [ ] Add project name env var. #513 PR.
-  - [ ] test using default project
-  - [ ] restart this session
-  - [ ] start new session/interview
-  - [ ] Bug: deleting goes back to output page before going to end
+  - [ ] Allwo testing default project
+  - [ ] Add restart this session
   - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
-  - [ ] Style results page. Scenario background color?
   - [ ] Set other env vars (like max time per step)
+  - [ ] Get partial console output from early-stopped tests (impossible?)
 
   DONE:
+  - [x] Clean up files no matter what
+  - [x] Allow user to stop in the middle of the test and jump straight to output. See new `revoke`
+  - [x] [auto deleting now] Bug: deleting goes back to output page before going to end
+  - [x] start new session/interview
+  - [x] Style results page. Scenario background color?
   - [x] Delete /tmp files after copying into da files (doesn't keep the folder structure, but I guess the zip does)
   - [x] Use dynamic server url
   - [x] Use dynamic project
   - [x] Use dynamic user id
   - [x] Use dynamic tags
-  
-  test_run_output.revoke() will terminate the task. If you only want to remove the task from the queue if it has not started running yet, you can set the optional keyword argument terminate to False.
 ---
 features:
   css: alkiln_through_interview.css
@@ -38,14 +39,25 @@ mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
+  
+  # TODO
+  # npm list -g <package> - can't find it
+  
+  if version_error == '':
+    if wants_install:
+      alkiln_installation_output
+      # `.wait()` could cause a timeout
+      if alkiln_installation_output.ready():
+        if alkiln_installation_output.failed():
+          flag_failed_installation
+      else:
+        wait_for_install
+  
   not_wants_tags
   tag_expression
-  # Get stopwatch going
-  test_start_time
   test_run_output
-  # `.wait()` WILL cause a timeout
-  if stopped_early \
-      or test_run_output.ready():  # Won't cause a timeout
+  
+  if stopped_early or test_run_output.ready():
     run_get_files_html
     remove_tmp_files
     show_output
@@ -64,21 +76,16 @@ code: |
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
 code: |
-  has_run_tests = False
+  alkiln_installation_output = background_action('install_alkiln', None, version=version_to_install)
+  #alkiln_installation_output = background_action('install_alkiln', None, version='')
 ---
 code: |
-  has_installed_alkiln = False
+  has_run_tests = False
 ---
 code: |
   got_files_html = False
 ---
 event: run_alkiln
-needs:
-  - has_run_tests
-  - get_folder_name
-  - get_zip_name
-  - got_files_html
-  - get_files_html
 code: |
   import subprocess
   import os
@@ -87,37 +94,6 @@ code: |
   
   if False:
     subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
-  
-  if False and not has_installed_alkiln:
-    
-    # TODO: Add version number here
-    installation = '<h2>Installing ALKiln</h2>\n'  # TODO: Add version number
-    installation += '<div class="section"><pre>\n<code>\n'
-    # Get current version (or commit sha if want to be consistent with GitHub and use one source of truth) (maybe can't get commit sha from npm installed version if we install from a branch)
-    # TODO: (maybe) Get git commit, detect git commit npm version, install npm version. SO MUCH MORE WORK.
-    # But then we need (for users) a place where we're listing commit sha's and their respective npm versions or a pointer to how to look that up. So people can use the same version everywhere they're running it.
-    # Problem: on GitHub users will be using the commit sha to specifiy the version of ALKiln to use. When they come to this interview, how will they know what to set to make sure they're using the same version here?
-    # * Save the git commit elsewhere when they input it.
-    # Should we let them install via npm version optionally instead?
-    # Avoiding npm version makes it much harder to update packages to new versions. So we won't have one source of truth.
-    # TODO: Document this weird behavior somewhere. Maybe an 'advanced' page of the documentation.
-    
-    # Store the input of the version somewhere on their server
-    # What file? txt file?
-    # Also, what if they want to install `latest`? How do we check that a version is up to date?
-    # https://stackoverflow.com/questions/11949419/npm-how-to-show-the-latest-version-of-a-package
-    
-    # Have to at least report the version
-    outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
-    if outcome.returncode != 0:
-      installation += outcome.stderr.decode('utf-8')
-    else:
-      installation += outcome.stdout.decode('utf-8')
-    installation += '</code>\n</pre></div>\n'
-    installation += '---\n\n'
-    has_installed_alkiln = True
-  else:
-    installation = ""
   
   server_url = url_of('root', _external=True)
   
@@ -143,10 +119,7 @@ code: |
   # https://github.com/SuffolkLITLab/docassemble-AssemblyLine/blob/main/docassemble/AssemblyLine/al_document.py#L1275-L1284
   # https://github.com/SuffolkLITLab/docassemble-ALDashboard/blob/main/docassemble/ALDashboard/data/questions/compile_bootstrap.yml
   
-  log('=================== finished run')
-  
   output = '<div class="console_output">\n'
-  output += installation
   output += '<div class="section">\n'
   output += '<h2 id="report">Test report</h2>\n'
   output += '<pre>\n<code>\n'
@@ -157,10 +130,82 @@ code: |
   
   background_response(output)
 ---
+event: install_alkiln
+code: |
+  import subprocess
+  import os
+  
+  # https://stackoverflow.com/a/41416032/14144258
+
+  ## TODO: Add version number here
+  #html = '<h2>Installing ALKiln</h2>\n'  # TODO: Add version number
+  #html += '<div class="section"><pre>\n<code>\n'
+  
+  # Get current version (or commit sha if want to be consistent with GitHub and use one source of truth) (maybe can't get commit sha from npm installed version if we install from a branch)
+  # TODO: (maybe) Get git commit, detect git commit npm version, install npm version. SO MUCH MORE WORK.
+  # But then we need (for users) a place where we're listing commit sha's and their respective npm versions or a pointer to how to look that up. So people can use the same version everywhere they're running it.
+  # Problem: on GitHub users will be using the commit sha to specifiy the version of ALKiln to use. When they come to this interview, how will they know what to set to make sure they're using the same version here?
+  # * Save the git commit elsewhere when they input it.
+  # Should we let them install via npm version optionally instead?
+  # Avoiding npm version makes it much harder to update packages to new versions. So we won't have one source of truth.
+  # TODO: Document this weird behavior somewhere. Maybe an 'advanced' page of the documentation.
+
+  # Store the input of the version somewhere on their server
+  # What file? txt file?
+  # Also, what if they want to install `latest`? How do we check that a version is up to date?
+  # https://stackoverflow.com/questions/11949419/npm-how-to-show-the-latest-version-of-a-package
+
+  # Have to at least report the version
+  #outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+  
+  to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
+  install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+  if install_output.returncode != 0:
+    result = install_output.stderr.decode('utf-8')
+    log('=== ALKiln === Error: installation failed:')
+    log(result)
+    # Cause error
+    install_output.check_returncode()
+    #html += install_output.stderr.decode('utf-8')
+  else:
+    result = install_output.stdout.decode('utf-8')
+    log('=== ALKiln === Installation succeeded:')
+    log(result)
+    #html += install_output.stdout.decode('utf-8')
+  #html += '</code>\n</pre></div>\n'
+  #html += '---\n\n'
+
+  background_response(result)
+---
+#id: flag_failed_installation
+#event: flag_failed_installation
+#question: |
+#  Error: Failed to install ALKiln
+#subquestion: |
+#  Check [your worker.log](${url_of('root', _external=True)}/logs?file=worker.log). The <a href="https://status.npmjs.org/">npm status page</a> might also tell you more. You can still run your tests with the previous version you had installed.
+---
+code: |
+  install_failed = True
+  flag_failed_installation = True
+---
+code: |
+  install_failed = False
+---
 code: |
   folder_name = get_folder_name()
   files_html = get_files_html(folder_name)
+  if files_html == None:
+    file_problem = True
   run_get_files_html = True
+---
+code: |
+  file_problem = False
+---
+code: |
+  if file_problem or stopped_early:
+    no_output = True
+  else:
+    no_output = False
 ---
 code: |
   import os
@@ -170,21 +215,31 @@ code: |
     '''Return html to show files in the artifacts folder.
        Syntax highlighting.'''
     
+    folder_exists = os.path.exists(f'/tmp/{folder_name}')
+    if not folder_exists:
+      return None
+    
     html = ''
     
     safe_zip_name = get_zip_name(folder_name)
-    ls = subprocess.run(['ls', '/tmp'], check=False, capture_output=True)
+    #ls = subprocess.run(['ls', '/tmp'], check=False, capture_output=True)
+    log('getting zip', 'console')
     zip_process = subprocess.run(['zip', '-r', f'/tmp/{safe_zip_name}', f'/tmp/{folder_name}'], check=False, capture_output=True)
-    log(f'Zip creation error if any: ${zip_process.stderr.decode()}')
-    zip_da_file = DAFile()
-    zip_da_file.initialize(filename=f'{safe_zip_name}.zip')
-    zip_da_file.copy_into(f'/tmp/{safe_zip_name}.zip')
-    zip_da_file.commit()
+    log(1, 'console')
+    if zip_process.returncode != 0:
+      log(2, 'console')
+      log('=== ALKiln === Error zipping artifacts folder:')
+      log(zip_process.stderr.decode("utf-8"))
+    else:
+      zip_da_file = DAFile()
+      zip_da_file.initialize(filename=f'{safe_zip_name}.zip')
+      zip_da_file.copy_into(f'/tmp/{safe_zip_name}.zip')
+      zip_da_file.commit()
     
-    # Zip section
-    html += '<div class="section zip">\n'
-    html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
-    html += '</div>\n'
+      # Zip section
+      html += '<div class="section zip">\n'
+      html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
+      html += '</div>\n'
     
     # Start top-level output section
     html += '<div class="section top_level">\n'
@@ -235,7 +290,7 @@ code: |
     
     # For each Scenario
     for dir in top_dirs:
-    
+      
       html += '<div class="output card card-body scenario">\n'
       html += f'<h3>Scenario: {dir.name}</h3>\n'
       
@@ -309,19 +364,29 @@ code: |
 code: |
   import os
   
+  log('removing zip', 'console')
   safe_zip_name = get_zip_name(folder_name)
   try:
     os.remove(f'/tmp/{safe_zip_name}.zip')
   except Exception as error:
-    log('error removing ZIP:')
+    log('=== ALKiln === Error removing ZIP:')
     log(error)
   
+  log('removing folder', 'console')
   import shutil
   try:
+    log('a', 'console')
     shutil.rmtree(f'/tmp/{folder_name}')
   except Exception as error:
-    log('error removing FOLDER:')
+    log('=== ALKiln === Error removing FOLDER:')
     log(error)
+    
+  #Removing leftover puppeteer stuff
+  #https://github.com/puppeteer/puppeteer/issues/6414
+  #```
+  #find /tmp/puppeteer_dev* -mtime +0 -exec rm -rf {} \;
+  #```
+  # Error? find: '/tmp/puppeteer_dev_chrome_profile-1fbwZ9': No such file or directory
   
   remove_tmp_files = True
 ---
@@ -364,9 +429,72 @@ subquestion: |
   
   When you've logged in, come back and refresh.
 ---
+code: |
+  import subprocess
+  import json
+  
+  # @>4.0.0 Also seems to get 3.0.9 for some reason
+  result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln@>4.0.0", 'versions', '--json'], check=False, capture_output=True)
+  if result.returncode != 0:
+    log('=== ALKiln === Error getting ALKiln versions:')
+    log(result.stderr.decode("utf-8"))
+    alkiln_version_list = []
+    version_error = result.stderr.decode("utf-8")
+  else:
+    alkiln_flip_order = json.loads(result.stdout.decode())[0]
+    alkiln_flip_order.reverse()
+    alkiln_version_list = alkiln_flip_order
+    version_error = ''
+---
+id: which task
+question: |
+  What do you want to do first?
+subquestion: |
+  Your version of ALKiln is
+  
+  **Some version**
+  
+  Do you want to install a new version before testing?
+fields:
+  - no label: wants_install
+    input type: radio
+    choices:
+      - Install a new verison of ALKiln: True
+      - Start testing now: False
+  - ALKiln version: version_to_install
+    enable if: wants_install
+    choices:
+      code: |
+        alkiln_version_list
+---
+code: |
+  install_start = current_datetime()
+---
+id: wait for alkiln install
+prevent going back: True
+reload: True
+event: wait_for_install
+question: |
+  One sec, installing ALKiln v${version_to_install}
+subquestion: |
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Refreshes every 10 seconds)
+---
 id: test info
 question: |
-  Run ALKiln tests
+  Run ALKiln vN tests
+subquestion: |
+  
+  % if install_failed:
+  <p class="alert alert-warning">
+  Warning: ALKiln installation failed. You can still run your tests with the previous version you had installed. To see more, check <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">your worker.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. You can try installing again later.
+  </p>
+  % endif
+
+  % if version_error != '':
+  <p class="alert alert-warning">
+  Warning: Usually you would have seen an option to install a different version of ALKiln. We skipped that screen because there was a problem getting information from the npm servers. You can check the output of the error in <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">your docassemble.log</a>. It might have been a problem with the node package manager (npm) servers. The <a href="https://status.npmjs.org/">npm status page</a> might tell you if npm servers are down. You can try installing again later.
+  </p>
+  % endif
 fields:
   - note: |
       You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
@@ -434,15 +562,21 @@ subquestion: |
   Elapsed time: <b>${ str(date_difference( ending=current_datetime(), starting=test_start_time ).delta) }</b>
   </div>
   
-  % if not stopped_early:
+  % if not no_output:
   <div class="section">
   <a href="#report">Tap to see full console printout below</a>
   </div>
   % endif
   
+  % if file_problem:
+  <p class="alert alert-error">
+  The installed version of ALKiln did not create any output which means the tests were not able to run. Your <a target="_blank" href="${url_of('root', _external=True)}/logs?file=worker.log">your worker.log</a> or <a target="_blank" href="${url_of('root', _external=True)}/logs?file=docassemble.log">your docassemble.log</a> might have more information.
+  </p>
+  % else:
   ${ files_html }
+  % endif
   
-  % if not stopped_early:
+  % if not no_output:
   ${ test_run_output.get() }
   % endif
   
