@@ -10,7 +10,10 @@ comment: |
 ---
 comment: |
   TODO:
+  - [ ] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing.
+  - [ ] Convert to module
   - [ ] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
+  - [ ] Tell user if they have the latest version already installed
   - [ ] Use background action args
   - [ ] Add project name env var. #513 PR.
   - [ ] Allwo testing default project
@@ -40,9 +43,6 @@ mandatory: True
 code: |
   #if not user_logged_in():
   #  ask_to_log_in
-  
-  # TODO
-  # npm list -g <package> - can't find it
   
   if version_error == '':
     if ask_version and wants_install:
@@ -78,7 +78,6 @@ code: |
 ---
 code: |
   alkiln_installation_output = background_action('install_alkiln', None, version=version_to_install)
-  #alkiln_installation_output = background_action('install_alkiln', None, version='')
 ---
 code: |
   has_run_tests = False
@@ -136,29 +135,21 @@ code: |
   import subprocess
   import os
   
-  # https://stackoverflow.com/a/41416032/14144258
-
-  ## TODO: Add version number here
-  #html = '<h2>Installing ALKiln</h2>\n'  # TODO: Add version number
-  #html += '<div class="section"><pre>\n<code>\n'
+  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
-  # Get current version (or commit sha if want to be consistent with GitHub and use one source of truth) (maybe can't get commit sha from npm installed version if we install from a branch)
-  # TODO: (maybe) Get git commit, detect git commit npm version, install npm version. SO MUCH MORE WORK.
-  # But then we need (for users) a place where we're listing commit sha's and their respective npm versions or a pointer to how to look that up. So people can use the same version everywhere they're running it.
-  # Problem: on GitHub users will be using the commit sha to specifiy the version of ALKiln to use. When they come to this interview, how will they know what to set to make sure they're using the same version here?
-  # * Save the git commit elsewhere when they input it.
-  # Should we let them install via npm version optionally instead?
-  # Avoiding npm version makes it much harder to update packages to new versions. So we won't have one source of truth.
-  # TODO: Document this weird behavior somewhere. Maybe an 'advanced' page of the documentation.
-
-  # Store the input of the version somewhere on their server
-  # What file? txt file?
-  # Also, what if they want to install `latest`? How do we check that a version is up to date?
-  # https://stackoverflow.com/questions/11949419/npm-how-to-show-the-latest-version-of-a-package
-
-  # Have to at least report the version
-  #outcome = subprocess.run(['npm', 'install', '-g', 'github:SuffolkLITLab/ALKiln#cli_playground'], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+  # Must install with npm version, not GitHub branch as
+  # we don't know a simple way to get the npm version from the
+  # branch installation so we can help the user install the
+  # right version or, alternatively, avoid installing anything
+  # unecessary. On GitHub, though, we hope to use the branch
+  # or commit as the source of truth for our version. This
+  # unfortunately means there can't be just one source of truth
+  # for which version of ALKiln is being used.
   
+  # TODO: Check that old version and new version aren't the same
+  # if action_argument("version") == get_installed_version():
+  #   return f'get_installed_version() is already installed'
+    
   if not did_install:
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
@@ -180,13 +171,6 @@ code: |
 code: |
   did_install = False
 ---
-#id: flag_failed_installation
-#event: flag_failed_installation
-#question: |
-#  Error: Failed to install ALKiln
-#subquestion: |
-#  Check [your worker.log](${url_of('root', _external=True)}/logs?file=worker.log). The <a href="https://status.npmjs.org/">npm status page</a> might also tell you more. You can still run your tests with the previous version you had installed.
----
 code: |
   install_failed = True
   flag_failed_installation = True
@@ -201,6 +185,8 @@ code: |
     file_problem = True
   run_get_files_html = True
 ---
+# Does this absolutely need to be separate? Do we at times
+# want to avoid calling get_files_html()?
 code: |
   file_problem = False
 ---
@@ -225,12 +211,8 @@ code: |
     html = ''
     
     safe_zip_name = get_zip_name(folder_name)
-    #ls = subprocess.run(['ls', '/tmp'], check=False, capture_output=True)
-    log('getting zip', 'console')
     zip_process = subprocess.run(['zip', '-r', f'/tmp/{safe_zip_name}', f'/tmp/{folder_name}'], check=False, capture_output=True)
-    log(1, 'console')
     if zip_process.returncode != 0:
-      log(2, 'console')
       log('=== ALKiln === Error zipping artifacts folder:')
       log(zip_process.stderr.decode("utf-8"))
     else:
@@ -241,7 +223,7 @@ code: |
     
       # Zip section
       html += '<div class="section zip">\n'
-      html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
+      html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files and folders", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
       html += '</div>\n'
     
     # Start top-level output section
@@ -253,7 +235,7 @@ code: |
     top_dirs = []
     top_files = []
     
-    # A bit faster than other methods, though that doesn't matter much. https://stackoverflow.com/a/62478211/14144258
+    # A bit faster than other methods, though that doesn't matter much here so far. https://stackoverflow.com/a/62478211/14144258
     with os.scandir(f'/tmp/{folder_name}') as scan:
       for dir_item in scan:
         if dir_item.is_file():
@@ -301,9 +283,7 @@ code: |
       for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
         file_names.sort()
         
-        # This is not really how we should organize them. Eventually
-        # organize them by type: report, error, screenshots, downloaded
-        # Maybe by timestamp instead of by name?
+        # TODO: organize them by type: report, error, screenshots, downloaded. Maybe by timestamp instead of by name?
         
         text_files_html = ''
         images_html = ''
@@ -317,8 +297,10 @@ code: |
           if file_name.endswith('.txt'):
             text_files_html += file_html
           elif file_name.endswith('.jpg'):
+            # TODO: separate error image from screenshots
             images_html += file_html
           elif file_name.endswith('.pdf') or file_name.endswith('.docx'):
+            # TODO: need more flexibility for any downloaded files
             templates_html += file_html
           else:
             # Not sure what these'll be
@@ -326,15 +308,14 @@ code: |
         
         # Text files come in a list first. Report will at least be there
         html += f'<ul class="text_files">\n{text_files_html}\n</ul>\n'
-        # Downloaded pdfs and docxs come next (TODO: any downloaded files)
+        # Downloaded pdfs and docxs
         if templates_html != '':
           html += '<hr>\n'
           html += f'<ul class="templates">\n{templates_html}\n</ul>\n'
-        # Images come last (TODO: split any error image out)
+        # Images come last
         if images_html != '':
           html += '<hr>\n'
-          # Ordered list because timing does matter a bit with these
-          # Moreso once we have story table screenshots
+          # Ordered list because timing creates an order that does matter. Moreso once we have story table screenshots
           html += f'<ol class="images">\n{images_html}\n</ol>\n'
         if other_files_html != '':
           html += '<hr>\n'
@@ -352,7 +333,6 @@ code: |
     # Show a DAFile for each file
     da_file = DAFile()
     da_file.initialize(filename=f'{name}')
-    #abs_file_path = os.path.abspath(os.path.join(path))
     da_file.copy_into(f'{path}')
     da_file.commit()
     
@@ -381,7 +361,13 @@ code: |
   except Exception as error:
     log('=== ALKiln === Error removing FOLDER:')
     log(error)
-    
+  
+  # https://stackoverflow.com/a/32949415/14144258
+  #import glob
+  #
+  #sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
+  #for sub_folder in sub_folders_list:
+  #    shutil.rmtree(sub_folder)
   #Removing leftover puppeteer stuff
   #https://github.com/puppeteer/puppeteer/issues/6414
   #```
@@ -430,6 +416,7 @@ code: |
   import subprocess
   import json
   
+  # all versions: https://stackoverflow.com/a/41416032/14144258
   # @>4.0.0 Also seems to get 3.0.9 for some reason
   result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln@>4.0.0", 'versions', '--json'], check=False, capture_output=True)
   if result.returncode != 0:
@@ -499,7 +486,7 @@ fields:
       - Install a new verison of ALKiln: True
       - Start testing now: False
   - ALKiln version: version_to_install
-    enable if: wants_install
+    show if: wants_install
     choices:
       code: |
         alkiln_version_list
@@ -538,32 +525,24 @@ subquestion: |
   
   You can run your tests with this version of ALKiln:
   
-  ${ get_installed_version() }
+  ** ${ get_installed_version() }**
 fields:
   - note: |
-      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
-  - I do NOT want to use tags: not_wants_tags
-    datatype: yesno
-  - What tags do you want to use?: tag_expression
-    disable if: not_wants_tags
-    # Doesn't matter if they leave it blank
-    required: False
-  - note: |
-      The code you want to test should be in a Project on your Playground
+      The code you want to test should be in a Project on your Playground on this server.
   - What Project is the code in?: project_name
     input type: radio
     choices:
       code: |
         [[ proj, proj ] for proj in get_list_of_projects( user_info().id )]
+  - note: |
+      You can choose to run just specific tests using [tags](https://cucumber.io/docs/cucumber/api/?lang=java#tags) in your test file and putting a [tag expression](https://cucumber.io/docs/cucumber/api/#tag-expressions) here.
+  - I want to run all the tests: not_wants_tags
+    datatype: yesno
+  - What tags do you want to use?: tag_expression
+    hide if: not_wants_tags
+    # Doesn't matter if they leave it blank
+    required: False
 #+ [['', 'Default']]
-comment: |  
-  ${ user_info().id }
-  
-  ${ get_list_of_projects( user_info().id ) }
-  
-  ${ user_info().package }
-  
-  ${ user_info().filename }
 ---
 if:
   - not_wants_tags
@@ -608,21 +587,21 @@ subquestion: |
   </p>
   % endif
   
-  <div class="section version">
-  Ran with this version of ALKiln:
+  <div class="section">
   
-  ${ get_installed_version() }
+  <div class="version">
+  Ran with version <b>${ get_installed_version() }</b>.
   </div>
-  
-  <div class="section elapsed_time">
+  <div class="elapsed_time">
   Elapsed time: <b>${ str(date_difference( ending=current_datetime(), starting=test_start_time ).delta) }</b>
   </div>
-  
   % if not no_output:
-  <div class="section">
+  <div class="to_console">
   <a href="#report">Tap to see full console printout below</a>
   </div>
   % endif
+  
+  </div>
   
   % if file_problem:
   <p class="alert alert-danger">
