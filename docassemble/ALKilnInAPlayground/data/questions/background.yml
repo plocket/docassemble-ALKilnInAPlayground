@@ -306,13 +306,15 @@ code: |
             # Not sure what these'll be
             other_files_html += file_html
         
-        # Text files come in a list first. Report will at least be there
-        html += f'<ul class="text_files">\n{text_files_html}\n</ul>\n'
+        if len(file_names) == 0:
+          html += '<div class="no_files">No files.</div>'
+        
+        if text_files_html != '':
+          html += f'<ul class="text_files">\n{text_files_html}\n</ul>\n'
         # Downloaded pdfs and docxs
         if templates_html != '':
           html += '<hr>\n'
           html += f'<ul class="templates">\n{templates_html}\n</ul>\n'
-        # Images come last
         if images_html != '':
           html += '<hr>\n'
           # Ordered list because timing creates an order that does matter. Moreso once we have story table screenshots
@@ -363,13 +365,14 @@ code: |
     log(error)
   
   # https://stackoverflow.com/a/32949415/14144258
-  #import glob
-  #
-  #sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
-  #for sub_folder in sub_folders_list:
-  #    shutil.rmtree(sub_folder)
-  #Removing leftover puppeteer stuff
-  #https://github.com/puppeteer/puppeteer/issues/6414
+  import glob
+  
+  # Remove leftover puppeteer stuff if it exists (e.g. if they stopped the tests early)
+  # https://github.com/puppeteer/puppeteer/issues/6414
+  sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
+  for sub_folder in sub_folders_list:
+      shutil.rmtree(sub_folder)
+  
   #```
   #find /tmp/puppeteer_dev* -mtime +0 -exec rm -rf {} \;
   #```
@@ -480,11 +483,8 @@ subquestion: |
   
   Do you want to install a new version of ALKiln before testing?
 fields:
-  - no label: wants_install
-    input type: radio
-    choices:
-      - Install a new verison of ALKiln: True
-      - Start testing now: False
+  - Install a different verison of ALKiln: wants_install
+    datatype: yesno
   - ALKiln version: version_to_install
     show if: wants_install
     choices:
