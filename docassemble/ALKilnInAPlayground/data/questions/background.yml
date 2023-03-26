@@ -2,7 +2,7 @@
 comment: |
   alkiln-run --sources /my/dir/ --tags @1 and @2 --max_step_s 30
   https://docs.python.org/3/library/argparse.html#example
-  alkiln-run --help
+  alkiln-run --help would be useful for local devs
   env vars - don't want to change them a lot
   minimist - lib for parsing cli args?
   
@@ -10,42 +10,15 @@ comment: |
 ---
 comment: |
   TODO:
-  - [ ] Set other env vars (like max time per step)
-  - [ ] Convert to module? Can we avoid this? Nicer for us to not wait for reload with every tweak.
-  - [ ] Tell user if they have the latest version installed?
-  - [ ] Add project name env var. #513 PR. (is this done?)
-  - [ ] Allow testing default project
-  - [ ] Add "restart this session"?
-  - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
-  - [ ] Get partial console output from early-stopped tests (impossible until Flask?)
-  - [ ] Show console output as it logs (impossible until Flask)
-
-  DONE:
-  - [x] Remove extra 'tmp' dir in unzipped zip
-  - [x] Put report at top of summary files
-  - [x] Use background action args
-  - [x] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing if they can't find what they're looking for.
-  - [x] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
-  - [x] Choose version of ALKiln with cached version
-  - [x] Show ALKiln version to user
-  - [x] Clean up files no matter what
-  - [x] Allow user to stop in the middle of the test and jump straight to output. See new `revoke`
-  - [x] [auto deleting now] Bug: deleting goes back to output page before going to end
-  - [x] start new session/interview
-  - [x] Style results page. Scenario background color?
-  - [x] Delete /tmp files after copying into da files (doesn't keep the folder structure, but I guess the zip does)
-  - [x] Use dynamic server url
-  - [x] Use dynamic project
-  - [x] Use dynamic user id
-  - [x] Use dynamic tags
+  See issue https://github.com/SuffolkLITLab/ALKiln/issues/675
 ---
 features:
   css: alkiln_through_interview.css
 ---
 mandatory: True
 code: |
-  #if not user_logged_in():
-  #  ask_to_log_in
+  if not user_logged_in():
+    ask_to_log_in
   
   if version_error == '':
     if ask_version and wants_install:
@@ -466,12 +439,12 @@ id: which task with prexisting version
 if: |
   not 'Could not find' in get_installed_version()
 question: |
-  What do you want to do first?
+  ALKiln version
 subquestion: |
   The server's current version of ALKiln is:[BR]
   **${ get_installed_version() }**
   
-  Do you want to install a new version of ALKiln before testing?
+  Do you want to install a different version of ALKiln before testing?
 fields:
   - Install a different verison of ALKiln: wants_install
     datatype: yesno
