@@ -10,17 +10,18 @@ comment: |
 ---
 comment: |
   TODO:
-  - [ ] Convert to module
+  - [ ] Set other env vars (like max time per step)
+  - [ ] Convert to module? Can we avoid this? Nicer for us to not wait for reload with every tweak.
   - [ ] Tell user if they have the latest version installed?
   - [ ] Add project name env var. #513 PR. (is this done?)
   - [ ] Allow testing default project
-  - [ ] Add restart this session?
+  - [ ] Add "restart this session"?
   - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
-  - [ ] Set other env vars (like max time per step)
   - [ ] Get partial console output from early-stopped tests (impossible until Flask?)
   - [ ] Show console output as it logs (impossible until Flask)
 
   DONE:
+  - [x] Remove extra 'tmp' dir in unzipped zip
   - [x] Put report at top of summary files
   - [x] Use background action args
   - [x] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing if they can't find what they're looking for.
@@ -87,8 +88,6 @@ event: run_alkiln
 code: |
   import subprocess
   import os
-  import json
-  import re
   
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
@@ -203,7 +202,7 @@ code: |
     html = ''
     
     safe_zip_name = get_zip_name(folder_name)
-    zip_process = subprocess.run(['zip', '-r', f'/tmp/{safe_zip_name}', f'/tmp/{folder_name}'], check=False, capture_output=True)
+    zip_process = subprocess.run(['zip', '-r', f'{safe_zip_name}', f'{folder_name}'], cwd="/tmp", check=False, capture_output=True)
     if zip_process.returncode != 0:
       log('=== ALKiln === Error zipping artifacts folder:')
       log(zip_process.stderr.decode("utf-8"))
@@ -496,7 +495,7 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Refreshes every 10 seconds)
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Updates every 10 seconds)
 ---
 id: test info
 question: |
@@ -556,7 +555,7 @@ question: |
 subquestion: |
   This screen will reload every 10 seconds until the tests are done.
   
-  **Elapsed time: ${ str(test_time.delta) }** (Refreshes every 10 seconds)
+  **Elapsed time: ${ str(test_time.delta) }** (Updates every 10 seconds)
   
 action buttons:
   - label: Stop tests early
