@@ -10,12 +10,10 @@ comment: |
 ---
 comment: |
   TODO:
-  - [ ] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing.
   - [ ] Convert to module
-  - [ ] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
   - [ ] Tell user if they have the latest version already installed
   - [ ] Use background action args
-  - [ ] Add project name env var. #513 PR.
+  - [ ] Add project name env var. #513 PR. (is this done?)
   - [ ] Allwo testing default project
   - [ ] Add restart this session?
   - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
@@ -23,6 +21,8 @@ comment: |
   - [ ] Get partial console output from early-stopped tests (impossible until Flask?)
 
   DONE:
+  - [x] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing if they can't find what they're looking for.
+  - [x] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
   - [x] Choose version of ALKiln with cached version
   - [x] Show ALKiln version to user
   - [x] Clean up files no matter what
@@ -46,13 +46,15 @@ code: |
   
   if version_error == '':
     if ask_version and wants_install:
-      alkiln_installation_output
-      # `.wait()` could cause a timeout
-      if alkiln_installation_output.ready():
-        if alkiln_installation_output.failed():
-          flag_failed_installation
-      else:
-        wait_for_install
+      # Don't install if not needed
+      if version_to_install != get_installed_version():
+        alkiln_installation_output
+        # `.wait()` could cause a timeout
+        if alkiln_installation_output.ready():
+          if alkiln_installation_output.failed():
+            flag_failed_installation
+        else:
+          wait_for_install
   
   not_wants_tags
   tag_expression
@@ -146,15 +148,11 @@ code: |
   # unfortunately means there can't be just one source of truth
   # for which version of ALKiln is being used.
   
-  # TODO: Check that old version and new version aren't the same
-  # if action_argument("version") == get_installed_version():
-  #   return f'get_installed_version() is already installed'
-    
   if not did_install:
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
-    
+
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
     log('=== ALKiln === Error: installation failed:')
@@ -477,8 +475,7 @@ if: |
 question: |
   What do you want to do first?
 subquestion: |
-  The server's current version of ALKiln is:
-  
+  The server's current version of ALKiln is:[BR]
   **${ get_installed_version() }**
   
   Do you want to install a new version of ALKiln before testing?
@@ -523,8 +520,7 @@ subquestion: |
   </p>
   % endif
   
-  You can run your tests with this version of ALKiln:
-  
+  You will run your tests with this version of ALKiln:[BR]
   ** ${ get_installed_version() }**
 fields:
   - note: |
@@ -542,6 +538,7 @@ fields:
     hide if: not_wants_tags
     # Doesn't matter if they leave it blank
     required: False
+continue button label: '<i class="far fa-play-circle"></i> Run tests'
 #+ [['', 'Default']]
 ---
 if:
@@ -572,6 +569,8 @@ subquestion: |
 action buttons:
   - label: Stop tests early
     action: stop_tests_early
+    icon: window-close
+    color: danger
 ---
 prevent going back: True
 event: show_output
