@@ -12,7 +12,6 @@ comment: |
   TODO:
   - [ ] Convert to module
   - [ ] Tell user if they have the latest version already installed
-  - [ ] Use background action args
   - [ ] Add project name env var. #513 PR. (is this done?)
   - [ ] Allwo testing default project
   - [ ] Add restart this session?
@@ -21,6 +20,7 @@ comment: |
   - [ ] Get partial console output from early-stopped tests (impossible until Flask?)
 
   DONE:
+  - [x] Use background action args
   - [x] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing if they can't find what they're looking for.
   - [x] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
   - [x] Choose version of ALKiln with cached version
@@ -67,6 +67,9 @@ code: |
   else:
     waiting_screen
 ---
+code: |
+  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
+---
 event: stop_tests_early
 code: |
   stopped_early = True
@@ -76,16 +79,7 @@ code: |
   stopped_early = False
 ---
 code: |
-  test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
----
-code: |
-  alkiln_installation_output = background_action('install_alkiln', None, version=version_to_install)
----
-code: |
   has_run_tests = False
----
-code: |
-  got_files_html = False
 ---
 event: run_alkiln
 code: |
@@ -94,11 +88,6 @@ code: |
   import json
   import re
   
-  if False:
-    subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
-  
-  server_url = url_of('root', _external=True)
-  
   # if statement for idempotency - ensure tests are only run once
   if not has_run_tests:
     test_output = subprocess.run(
@@ -106,11 +95,11 @@ code: |
       check=False,
       capture_output=True,
       env=dict(os.environ,
-        SERVER_URL=server_url,
+        SERVER_URL=f'{url_of("root", _external=True)}',
         _ORIGIN='interview',
-        _PROJECT_NAME=project_name,
+        _PROJECT_NAME=action_argument('project_name'),
         _USER_ID=f'{user_info().id}',
-        _TAGS=tag_expression,
+        _TAGS=action_argument('tag_expression'),
         # Don't need the values of these when running in interview
         REPO_URL="X",
         BRANCH_NAME="X",
@@ -123,7 +112,7 @@ code: |
   
   output = '<div class="console_output">\n'
   output += '<div class="section">\n'
-  output += '<h2 id="report">Test report</h2>\n'
+  output += '<h2 id="report">Console output</h2>\n'
   output += '<pre>\n<code>\n'
   output += f'{test_output.stdout.decode("utf-8")}{test_output.stderr.decode("utf-8")}\n'
   output += '</code>\n</pre>\n'
@@ -131,6 +120,9 @@ code: |
   output += '</div>\n'
   
   background_response(output)
+---
+code: |
+  alkiln_installation_output = background_action('install_alkiln', None, version=version_to_install)
 ---
 event: install_alkiln
 code: |
@@ -226,7 +218,7 @@ code: |
     
     # Start top-level output section
     html += '<div class="section top_level">\n'
-    html += '<h2>Output for all tests</h2>\n'
+    html += '<h2>Summary files</h2>\n'
     html += '<div class="output card card-body">\n'
     
     # collect names and paths.
@@ -269,7 +261,7 @@ code: |
     
     # Show files in each Scenario
     top_dirs.sort(key=lambda dir: dir.name)
-    html += '<h2>Output for Scenarios</h2>\n'
+    html += '<h2>Scenario files</h2>\n'
     
     # For each Scenario
     for dir in top_dirs:
@@ -561,8 +553,6 @@ question: |
   Hang tight. ALKiln is running the tests.
 subquestion: |
   This screen will reload every 10 seconds until the tests are done.
-  
-  <i class="fas fa-spinner fa-spin"></i>
   
   **Elapsed time: ${ str(test_time.delta) }** (Refreshes every 10 seconds)
   
