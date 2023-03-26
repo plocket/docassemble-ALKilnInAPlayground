@@ -11,15 +11,17 @@ comment: |
 comment: |
   TODO:
   - [ ] Convert to module
-  - [ ] Tell user if they have the latest version already installed
+  - [ ] Tell user if they have the latest version installed?
   - [ ] Add project name env var. #513 PR. (is this done?)
-  - [ ] Allwo testing default project
+  - [ ] Allow testing default project
   - [ ] Add restart this session?
   - [ ] Coloring output: Cucumber formatter for some of it maybe https://github.com/cucumber/cucumber-js/blob/main/docs/formatters.md
   - [ ] Set other env vars (like max time per step)
   - [ ] Get partial console output from early-stopped tests (impossible until Flask?)
+  - [ ] Show console output as it logs (impossible until Flask)
 
   DONE:
+  - [x] Put report at top of summary files
   - [x] Use background action args
   - [x] Don't install if new version matches the old version. Just exclude it from the list of options? No, that'll be more confusing if they can't find what they're looking for.
   - [x] Delete unclosed... puppeteer browser folders? Files? `puppeteer_dev_chrome_profile-zzzzz`
@@ -221,7 +223,7 @@ code: |
     html += '<h2>Summary files</h2>\n'
     html += '<div class="output card card-body">\n'
     
-    # collect names and paths.
+    # collect top-level names and paths.
     top_dirs = []
     top_files = []
     
@@ -235,18 +237,24 @@ code: |
     
     # Show files that are for the all the tests combined
     # This includes error screenshots
-    # TODO: alkiln, when there are secrets on a page, show something in place of an error screenshot. Default image?
     top_images_html = ''
     top_other_files_html = ''
+    report_html = ''
     top_files.sort(key=lambda file: file.name)
     for file in top_files:
+    
+      file_html = get_file_html(name=file.name, path=file.path)
+      
       if file.name.endswith('.jpg'):
-        top_images_html += get_file_html(name=file.name, path=file.path)
+        top_images_html += file_html
       else:
-        top_other_files_html += get_file_html(name=file.name, path=file.path)
+        if file.name == 'report.txt':
+          report_html = file_html
+        else:
+          top_other_files_html += file_html
     
     # At least report and debug log
-    html += f'<ul class="text_files">\n{top_other_files_html}\n</ul>\n'
+    html += f'<ul class="text_files">\n{report_html}\n{top_other_files_html}\n</ul>\n'
     if top_images_html != '':
       html += '<hr>\n'
       html += f'<ul class="images">\n{top_images_html}\n</ul>\n'
@@ -273,7 +281,7 @@ code: |
       for root_path, dir_names, file_names in os.walk(f'{dir.path}'):
         file_names.sort()
         
-        # TODO: organize them by type: report, error, screenshots, downloaded. Maybe by timestamp instead of by name?
+        # TODO: organize files by type: report, error, screenshots, downloaded. Maybe by timestamp instead of by name?
         
         text_files_html = ''
         images_html = ''
@@ -348,7 +356,6 @@ code: |
   
   import shutil
   try:
-    log('a', 'console')
     shutil.rmtree(f'/tmp/{folder_name}')
   except Exception as error:
     log('=== ALKiln === Error removing FOLDER:')
@@ -362,11 +369,6 @@ code: |
   sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
   for sub_folder in sub_folders_list:
       shutil.rmtree(sub_folder)
-  
-  #```
-  #find /tmp/puppeteer_dev* -mtime +0 -exec rm -rf {} \;
-  #```
-  # Error? find: '/tmp/puppeteer_dev_chrome_profile-1fbwZ9': No such file or directory
   
   remove_tmp_files = True
 ---
