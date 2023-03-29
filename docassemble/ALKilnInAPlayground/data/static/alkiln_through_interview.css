@@ -30,11 +30,11 @@
   margin: 0;
 }
 
-/* Potentially make a 'carousel' of images or something when there are too many. */
+/* Potentially make a 'carousel' of images or something when there are too many. E.g. when we add the ability to take a pic with every story table page. */
 #alkiln_test_output .images {
 }
 
-#alkiln_test_output .image {
+#alkiln_test_output .thumbnail {
   margin-bottom: 0.2em;
 }
 

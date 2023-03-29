@@ -70,7 +70,7 @@ code: |
       capture_output=True,
       env=dict(os.environ,
         SERVER_URL=f'{url_of("root", _external=True)}',
-        _ORIGIN='interview',
+        _ORIGIN='playground',
         _PROJECT_NAME=action_argument('project_name'),
         _USER_ID=f'{user_info().id}',
         _TAGS=action_argument('tag_expression'),
@@ -190,15 +190,9 @@ code: |
       html += f'{ action_button_html(zip_da_file.url_for(), label="Download all test files and folders", color="primary", size="md", icon="file-zipper", new_window=True, classname="zip") }\n'
       html += '</div>\n'
     
-    # Start top-level output section
-    html += '<div class="section top_level">\n'
-    html += '<h2>Summary files</h2>\n'
-    html += '<div class="output card card-body">\n'
-    
     # collect top-level names and paths.
     top_dirs = []
     top_files = []
-    
     # A bit faster than other methods, though that doesn't matter much here so far. https://stackoverflow.com/a/62478211/14144258
     with os.scandir(f'/tmp/{folder_name}') as scan:
       for dir_item in scan:
@@ -207,6 +201,11 @@ code: |
         elif dir_item.is_dir():
           top_dirs.append(dir_item)
     
+    # ====== "Root" level output ======
+    html += '<div class="section top_level">\n'
+    html += '<h2>Summary files</h2>\n'
+    html += '<div class="output card card-body">\n'
+    
     # Show files that are for the all the tests combined
     # This includes error screenshots
     top_images_html = ''
@@ -214,9 +213,7 @@ code: |
     report_html = ''
     top_files.sort(key=lambda file: file.name)
     for file in top_files:
-    
       file_html = get_file_html(name=file.name, path=file.path)
-      
       if file.name.endswith('.jpg'):
         top_images_html += file_html
       else:
@@ -236,7 +233,7 @@ code: |
     # End top-level output section
     html += '</div>\n'
     
-    # Start all Scenarios
+    # ====== Start all Scenarios ======
     html += '<div class="section scenarios">\n'
     
     # Show files in each Scenario
@@ -254,7 +251,6 @@ code: |
         file_names.sort()
         
         # TODO: organize files by type: report, error, screenshots, downloaded. Maybe by timestamp instead of by name?
-        
         text_files_html = ''
         images_html = ''
         templates_html = ''
@@ -267,10 +263,10 @@ code: |
           if file_name.endswith('.txt'):
             text_files_html += file_html
           elif file_name.endswith('.jpg'):
-            # TODO: separate error image from screenshots
+            # TODO: put error screenshots at the top
             images_html += file_html
           elif file_name.endswith('.pdf') or file_name.endswith('.docx'):
-            # TODO: need more flexibility for any downloaded files
+            # TODO: need more flexibility for other types of downloaded files
             templates_html += file_html
           else:
             # Not sure what these'll be
@@ -311,8 +307,14 @@ code: |
     if name.endswith('.txt'):
       html = f'<li>\n{name} (<a target="_blank" href="{da_file.url_for()}">tap to see raw text <i class="fas fa-external-link"></i></a>)\n</li>\n'
     else:
-      da_file.set_alt_text(f'The image for {name}.')
-      html = f'<li class="image">\n<span>{name} (<a target="_blank" href="{da_file.url_for()}">tap to see file <i class="fas fa-external-link"></i></a>)</span>\n<div><a target="_blank" href="{da_file.url_for()}">{da_file}</a></div>\n</li>\n'
+      # Assumes a file that can be shown with a thumbnail image
+      da_file.set_alt_text(f'The thumbnail image for {name}.')
+      html = f'<li class="thumbnail">\n'
+      html += f'<span><span>{name}</span> '
+      html += f'(<a target="_blank" href="{da_file.url_for()}">tap to see file <i class="fas fa-external-link"></i></a>)'
+      html += f'</span>\n'
+      html += f'<div><a target="_blank" href="{da_file.url_for()}">{da_file}</a></div>\n'
+      html += f'</li>\n'
     
     return html
 ---
@@ -336,7 +338,8 @@ code: |
   # https://stackoverflow.com/a/32949415/14144258
   import glob
   
-  # Remove leftover puppeteer stuff if it exists (e.g. if they stopped the tests early)
+  # Remove leftover puppeteer stuff if it exists (e.g. if the user
+  # stopped the tests early)
   # https://github.com/puppeteer/puppeteer/issues/6414
   sub_folders_list = glob.glob('tmp/puppeteer_dev_chrome_profile*')
   for sub_folder in sub_folders_list:
@@ -383,18 +386,38 @@ code: |
   import subprocess
   import json
   
-  # all versions: https://stackoverflow.com/a/41416032/14144258
-  # @>4.0.0 Also seems to get 3.0.9 for some reason
-  result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln@>4.0.0", 'versions', '--json'], check=False, capture_output=True)
+  def filter_versions_greater_or_equal(versions: list[str], minimum: str = "0.0.0") -> list[str]:
+    '''Given a list of strings of versions, return a new list of
+    versions at or above the given minimum version.'''
+    filtered = []
+    try:
+      minimum = [int(s) for s in minimum.split(".", maxsplit=2)]
+    except Exception as err:
+      raise ValueError(f"expected a version string in the form major.minor.patch, but got {minimum}") from err
+    for version in versions:
+      maj, minor, patch_and_prelease, = version.split(".", maxsplit=2)
+      # If there is a prerelease attached, get rid of it in 
+      # order to make the comparison
+      if "-" in patch_and_prelease:
+        patch, pre = patch_and_prelease.split("-", maxsplit=1)
+      else:
+        patch = patch_and_prelease
+      version_parts = [int(maj), int(minor), int(patch)]
+      if version_parts >= minimum:
+          filtered.append(version)
+    return filtered
+  
+  # all versions, but not working: https://stackoverflow.com/a/41416032/14144258
+  # puzzle of above: @>4.0.0 seems to get all versions @>5.0.0 seems to get none (only have a single pre-release right now). When none are found, we get err 'JSONDecodeError: Expecting value: line 1 column 1 (char 0)'
+  result = subprocess.run(['npm', 'view', "@suffolklitlab/alkiln", 'versions', '--json'], check=False, capture_output=True)
   if result.returncode != 0:
     log('=== ALKiln === Error getting ALKiln versions:')
     log(result.stderr.decode("utf-8"))
     alkiln_version_list = []
     version_error = result.stderr.decode("utf-8")
   else:
-    alkiln_flip_order = json.loads(result.stdout.decode())[0]
-    alkiln_flip_order.reverse()
-    alkiln_version_list = alkiln_flip_order
+    versions = json.loads(result.stdout.decode())
+    alkiln_version_list = filter_versions_greater_or_equal(reversed(versions), '4.0.0')
     version_error = ''
 ---
 code: |
@@ -468,7 +491,7 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Updates every 10 seconds)
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Updates about every 10 seconds)
 ---
 id: test info
 question: |
@@ -501,7 +524,7 @@ fields:
   - I want to run all the tests: not_wants_tags
     datatype: yesno
   - What tags do you want to use?: tag_expression
-    hide if: not_wants_tags
+    disable if: not_wants_tags
     # Doesn't matter if they leave it blank
     required: False
 continue button label: '<i class="far fa-play-circle"></i> Run tests'
@@ -528,7 +551,7 @@ question: |
 subquestion: |
   This screen will reload every 10 seconds until the tests are done.
   
-  **Elapsed time: ${ str(test_time.delta) }** (Updates every 10 seconds)
+  **Elapsed time: ${ str(test_time.delta) }** (Updates about every 10 seconds)
   
 action buttons:
   - label: Stop tests early
