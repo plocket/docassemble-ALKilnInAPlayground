@@ -41,7 +41,7 @@ code: |
     
     #log(f'no installed_output, did stop 2? {stopped_install_early}', 'console')
     log('b', 'console')
-    #log(f"installation_output.failed() {installation_output.failed()}", 'console')
+    log(f"installation_output.failed() {installation_output.failed()}", 'console')
     
     #log(f'no installed_output, did stop 3? {stopped_install_early}', 'console')
     log('c', 'console')
