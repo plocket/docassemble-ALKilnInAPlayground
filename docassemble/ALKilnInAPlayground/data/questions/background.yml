@@ -20,18 +20,94 @@ code: |
   if not user_logged_in():
     ask_to_log_in
   
+  # TODO: remove reset_stopped_install_early
+  #if reset_stopped_install_early:
+  #  stopped_install_early = False
+  #  reset_stopped_install_early = False
+  
+  #if start_over:
+  #  log('50', 'console')
+  #  undefine('installation_output')
+  #  undefine('ask_version')
+  #  start_over = False
+  
+  log(f'stopped_install_early {stopped_install_early}', 'console')
+  log(f"defined('installation_output') {defined('installation_output')}", 'console')
+  if defined('installation_output'):
+  
+    #log(f'no installed_output, did stop 1? {stopped_install_early}', 'console')
+    log('a', 'console')
+    log(f"installation_output.ready() {installation_output.ready()}", 'console')
+    
+    #log(f'no installed_output, did stop 2? {stopped_install_early}', 'console')
+    log('b', 'console')
+    #log(f"installation_output.failed() {installation_output.failed()}", 'console')
+    
+    #log(f'no installed_output, did stop 3? {stopped_install_early}', 'console')
+    log('c', 'console')
+    
+  if stopped_install_early and defined('installation_output') and installation_output.ready() and installation_output.failed():
+    log(3, 'console')
+    # Don't give them an option about whether to install when asking them which version they want to install
+    force_user_install = True
+    log(4, 'console')
+    #start_over = True
+    #log(4.5, 'console')
+    undefine('ask_version')
+    log(4.6, 'console')
+    undefine('installation_output')
+    log(4.7, 'console')
+    stopped_install_early = False
+    log(5, 'console')
+    #elif defined('installation_output') and not installation_output.ready():
+    #  log(5.5, 'console')
+  else:
+    wait_for_install
+    
+  log(5.6, 'console')
+  
   if version_error == '':
     if ask_version and wants_install:
       # Don't install if not needed
       if version_to_install != get_installed_version():
-        alkiln_installation_output
-        # `.wait()` could cause a timeout
-        if alkiln_installation_output.ready():
-          if alkiln_installation_output.failed():
-            flag_failed_installation
+        log(0, 'console')
+        installation_output
+        log(1, 'console')
+        
+        # Can be success or failure
+        if installation_output.ready():
+          log(2, 'console')
+          # If stopped early, ALKiln installation might be messed up, so force them to install until it works. Wait till failure is complete, though.
+          #if stopped_install_early:
+          #  log(3, 'console')
+          #  # Don't give them an option about whether to install when asking them which version they want to install
+          #  force_user_install = True
+          #  log(4, 'console')
+          #  start_over = True
+          #  log(5, 'console')
+            
+          # When we've failed without stopping early
+          if installation_output.failed():
+            log(6, 'console')
+            install_failed = True
+            log(7, 'console')
+          
+          else:
+            log(7.5, 'console')
+            stopped_install_early = False
+            #reset_stopped_install_early = True
+            force_user_install = False
+            install_failed = False
+          
+          ## Is this necessary?
+          #else:
+          #  log(8, 'console')
+          #  wait_for_install
         else:
+          log(9, 'console')
           wait_for_install
   
+  log(10, 'console')
   not_wants_tags
   tag_expression
   
@@ -44,15 +120,22 @@ code: |
     waiting_screen
 ---
 code: |
+  reset_stopped_install_early = False
+---
+code: |
+  start_over = False
+---
+code: |
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
 ---
-event: stop_tests_early
+event: stop_install_early
 code: |
-  stopped_early = True
-  test_run_output.revoke()
+  stopped_install_early = True
+  installation_output.revoke()
 ---
 code: |
-  stopped_early = False
+  log('define stopped_install_early as False', 'console')
+  stopped_install_early = False
 ---
 code: |
   has_run_tests = False
@@ -96,7 +179,7 @@ code: |
   background_response(output)
 ---
 code: |
-  alkiln_installation_output = background_action('install_alkiln', None, version=version_to_install)
+  installation_output = background_action('install_alkiln', None, version=version_to_install)
 ---
 event: install_alkiln
 code: |
@@ -134,10 +217,6 @@ code: |
 ---
 code: |
   did_install = False
----
-code: |
-  install_failed = True
-  flag_failed_installation = True
 ---
 code: |
   install_failed = False
@@ -446,7 +525,7 @@ code: |
 ---
 id: which task with no alkiln installed
 if: |
-  'Could not find' in get_installed_version()
+  'Could not find' in get_installed_version() or force_user_install
 question: |
   Install ALKiln
 subquestion: |
@@ -491,7 +570,14 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Updates about every 10 seconds)
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
+  (Updates about every 10 seconds depending on your server)
+  
+action buttons:
+  - label: Cancel and try again
+    action: stop_install_early
+    icon: window-close
+    color: danger
 ---
 id: test info
 question: |
@@ -551,13 +637,22 @@ question: |
 subquestion: |
   This screen will reload every 10 seconds until the tests are done.
   
-  **Elapsed time: ${ str(test_time.delta) }** (Updates about every 10 seconds)
+  **Elapsed time: ${ str(test_time.delta) }**[BR]
+  (Updates about every 10 seconds depending on your server)
   
 action buttons:
   - label: Stop tests early
     action: stop_tests_early
     icon: window-close
     color: danger
+---
+event: stop_tests_early
+code: |
+  stopped_early = True
+  test_run_output.revoke()
+---
+code: |
+  stopped_early = False
 ---
 prevent going back: True
 event: show_output
