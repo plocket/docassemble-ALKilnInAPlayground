@@ -23,6 +23,8 @@ code: |
   if version_error == '':
     if ask_version and wants_install:
       # Don't install if not needed
+      foo = get_installed_version()
+      log(f'installed version {foo}', 'console')
       if version_to_install != get_installed_version():
         alkiln_installation_output
         # `.wait()` could cause a timeout
@@ -438,7 +440,7 @@ code: |
       pattern = re.compile(r'suffolklitlab/alkiln@(\d.*)$')
       matches = re.search(pattern, packages.stdout.decode())
       if matches == None:
-        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln.'
+        server_version = 'Could not find a version of ALKiln on the server. You need to install a version of ALKiln'
       else:
         server_version = matches.group(1)
         del matches # cannot pickle error otherwise
@@ -479,7 +481,7 @@ fields:
 continue button field: ask_version
 ---
 code: |
-  wants_install = False
+  wants_install = True
 ---
 code: |
   install_start = current_datetime()
@@ -491,6 +493,8 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
+  This shouldn't take more than a minute.
+  
   **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Updates about every 10 seconds)
 ---
 id: test info
