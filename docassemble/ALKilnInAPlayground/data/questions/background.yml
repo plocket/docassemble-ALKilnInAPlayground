@@ -26,10 +26,10 @@ code: |
       foo = get_installed_version()
       log(f'installed version {foo}', 'console')
       if version_to_install != get_installed_version():
-        alkiln_installation_output
+        installation_output
         # `.wait()` could cause a timeout
-        if alkiln_installation_output.ready():
-          if alkiln_installation_output.failed():
+        if installation_output.ready():
+          if installation_output.failed():
             flag_failed_installation
         else:
           wait_for_install
@@ -44,6 +44,70 @@ code: |
     show_output
   else:
     waiting_screen
+---
+####################################
+# Installation
+####################################
+---
+code: |
+  installation_output = background_action('install_alkiln', None, version=version_to_install)
+---
+event: stop_install_early
+code: |
+  stopped_install_early = True
+  installation_output.revoke()
+---
+code: |
+  stopped_install_early = False
+---
+event: install_alkiln
+code: |
+  import subprocess
+  import os
+  
+  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
+  
+  # Must install with npm version, not GitHub branch as
+  # we don't know a simple way to get the npm version from the
+  # branch installation so we can help the user install the
+  # right version or, alternatively, avoid installing anything
+  # unecessary. On GitHub, though, we hope to use the branch
+  # or commit as the source of truth for our version. This
+  # unfortunately means there can't be just one source of truth
+  # for which version of ALKiln is being used.
+  
+  # if statement for idempotency - run install only once
+  if not did_install:
+    to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
+    install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+    did_install = True
+
+  if install_output.returncode != 0:
+    result = install_output.stderr.decode('utf-8')
+    log('=== ALKiln === Error: installation failed:')
+    log(result)
+    # Cause error
+    install_output.check_returncode()
+  else:
+    result = install_output.stdout.decode('utf-8')
+    log('=== ALKiln === Installation succeeded:')
+    log(result)
+
+  background_response(result)
+---
+code: |
+  did_install = False
+---
+code: |
+  install_failed = True
+  flag_failed_installation = True
+---
+code: |
+  install_failed = False
+---
+####################################
+# Testing
+####################################
 ---
 code: |
   test_run_output = background_action('run_alkiln', None, tag_expression=tag_expression, project_name=project_name)
@@ -96,53 +160,6 @@ code: |
   output += '</div>\n'
   
   background_response(output)
----
-code: |
-  alkiln_installation_output = background_action('install_alkiln', None, version=version_to_install)
----
-event: install_alkiln
-code: |
-  import subprocess
-  import os
-  
-  subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
-  
-  # Must install with npm version, not GitHub branch as
-  # we don't know a simple way to get the npm version from the
-  # branch installation so we can help the user install the
-  # right version or, alternatively, avoid installing anything
-  # unecessary. On GitHub, though, we hope to use the branch
-  # or commit as the source of truth for our version. This
-  # unfortunately means there can't be just one source of truth
-  # for which version of ALKiln is being used.
-  
-  if not did_install:
-    to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
-    install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
-    did_install = True
-
-  if install_output.returncode != 0:
-    result = install_output.stderr.decode('utf-8')
-    log('=== ALKiln === Error: installation failed:')
-    log(result)
-    # Cause error
-    install_output.check_returncode()
-  else:
-    result = install_output.stdout.decode('utf-8')
-    log('=== ALKiln === Installation succeeded:')
-    log(result)
-
-  background_response(result)
----
-code: |
-  did_install = False
----
-code: |
-  install_failed = True
-  flag_failed_installation = True
----
-code: |
-  install_failed = False
 ---
 code: |
   folder_name = get_folder_name()
@@ -320,6 +337,7 @@ code: |
     
     return html
 ---
+id: remove files
 code: |
   import os
   
