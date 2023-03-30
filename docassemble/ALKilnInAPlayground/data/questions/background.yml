@@ -493,9 +493,10 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  This shouldn't take more than a minute.
+  This should be less than a minute, though if your server or the npm servers are slow, it may take longer.
   
-  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }** (Updates about every 10 seconds)
+  **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
+  (Updates about every 10 seconds depending on your server)
 ---
 id: test info
 question: |
@@ -553,9 +554,10 @@ reload: True
 question: |
   Hang tight. ALKiln is running the tests.
 subquestion: |
-  This screen will reload every 10 seconds until the tests are done.
+  This screen will reload about every 10 seconds until the tests are done (seconds depending on your server speed).
   
-  **Elapsed time: ${ str(test_time.delta) }** (Updates about every 10 seconds)
+  **Elapsed time: ${ str(test_time.delta) }**[BR]
+  (Updates about every 10 seconds depending on your server)
   
 action buttons:
   - label: Stop tests early
