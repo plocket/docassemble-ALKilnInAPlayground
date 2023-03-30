@@ -20,17 +20,34 @@ code: |
   if not user_logged_in():
     ask_to_log_in
   
+  if redo_after_stopped_with_invalid_install:
+    invalid_install = True
+    undefine('ask_version')
+    undefine('install_failed')
+    undefine_install_task = True
+    redo_after_stopped_with_invalid_install = False
+  
+  if undefine_install_task:
+    undefine('installation_output')
+    undefine_install_task = False
+  
   if version_error == '':
-    if ask_version and wants_install:
+    ask_version
+    if wants_install or invalid_install:
       # Don't install if not needed
-      foo = get_installed_version()
-      log(f'installed version {foo}', 'console')
-      if version_to_install != get_installed_version():
+      if started_with_different_version or invalid_install:
         installation_output
         # `.wait()` could cause a timeout
         if installation_output.ready():
           if installation_output.failed():
-            flag_failed_installation
+            # If failed after invalid install, start again again
+            if invalid_install:
+              redo_after_stopped_with_invalid_install = True
+            else:
+              invalid_install = False
+              flag_failed_installation
+          else:
+            invalid_install = False
         else:
           wait_for_install
   
@@ -50,15 +67,27 @@ code: |
 ####################################
 ---
 code: |
+  if version_to_install != get_installed_version():
+    started_with_different_version = True
+  else:
+    started_with_different_version = False
+---
+code: |
   installation_output = background_action('install_alkiln', None, version=version_to_install)
+---
+code: |
+  invalid_install = False
 ---
 event: stop_install_early
 code: |
-  stopped_install_early = True
+  redo_after_stopped_with_invalid_install = True
   installation_output.revoke()
 ---
 code: |
-  stopped_install_early = False
+  redo_after_stopped_with_invalid_install = False
+---
+code: |
+  undefine_install_task = False
 ---
 event: install_alkiln
 code: |
@@ -84,7 +113,8 @@ code: |
 
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
-    log('=== ALKiln === Error: installation failed:')
+    log(f'=== ALKiln === Error: installing version {action_argument("version")} failed')
+    log(f'Error code: {install_output.returncode}')
     log(result)
     # Cause error
     install_output.check_returncode()
@@ -452,6 +482,7 @@ code: |
     # What would cause an error here?
     if result.returncode != 0:
       log('=== ALKiln === Error getting server ALKiln version:')
+      log(f'Error code: {result.returncode}')
       log(packages.stderr.decode("utf-8"))
       server_version = 'Error getting server ALKiln version'
     else:
@@ -511,10 +542,24 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  This should be less than a minute, though if your server or the npm servers are slow, it may take longer.
+  **While tests are running DO NOT:**
+  
+  - Edit this project right
+  - Save a python module
+  - Pull or upload a package with a python module
+  - Cause the server to reload
+  
+  This should take less than a minute, though if your server or the npm servers are slow, it may take longer.
   
   **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
   (Updates about every 10 seconds depending on your server)
+
+# revoke install
+action buttons:
+  - label: Cancel and try again
+    action: stop_install_early
+    icon: window-close
+    color: danger
 ---
 id: test info
 question: |
@@ -551,7 +596,17 @@ fields:
     # Doesn't matter if they leave it blank
     required: False
 continue button label: '<i class="far fa-play-circle"></i> Run tests'
+action buttons:
+  - label: Restart
+    action: do_restart
+    icon: undo
+    color: warning
+
 #+ [['', 'Default']]
+---
+event: do_restart
+code: |
+  command('restart')
 ---
 if:
   - not_wants_tags
@@ -572,6 +627,13 @@ reload: True
 question: |
   Hang tight. ALKiln is running the tests.
 subquestion: |
+  **While tests are running DO NOT:**
+  
+  - Edit this project right
+  - Save a python module
+  - Pull or upload a package with a python module
+  - Cause the server to reload
+
   This screen will reload about every 10 seconds until the tests are done (seconds depending on your server speed).
   
   **Elapsed time: ${ str(test_time.delta) }**[BR]
