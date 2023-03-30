@@ -110,18 +110,40 @@ code: |
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
-
+    
+  try:
+    install_output.check_returncode()
+  except Exception as err:
+    log('======== caught ENOTEMPTY ==========')
+    log(err)
+    log('================')
+  
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
     log(f'=== ALKiln === Error: installing version {action_argument("version")} failed')
-    log(f'Error code: {install_output.returncode}')
     log(result)
-    # Cause error
-    install_output.check_returncode()
-  else:
-    result = install_output.stdout.decode('utf-8')
-    log('=== ALKiln === Installation succeeded:')
-    log(result)
+    
+    if 'ENOTEMPTY' in result:
+      # returned non-zero exit status 217 was the logged subprocess err
+      log('ALKiln: Trying to clean up the old installation.')
+      delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
+      
+      log('ALKiln: Trying to install the same version again.')
+      install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+      
+      if install_output.returncode != 0:
+        log(install_output.stderr.decode('utf-8'))
+      # Will except if is error, causing failure. Not sure more we can do.
+      install_output.check_returncode()
+      
+    else:
+      # Cause failure
+      install_output.check_returncode()
+  
+  # If no error thrown by now, log output and succeed
+  result = install_output.stdout.decode('utf-8')
+  log('=== ALKiln === Installation succeeded:')
+  log(result)
 
   background_response(result)
 ---
@@ -501,7 +523,13 @@ if: |
 question: |
   Install ALKiln
 subquestion: |
-  It looks like you're running ALKiln tests for the first time on this server. Which version of ALKiln do you want to install? The top choice is the most recent version.
+  It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and then cancelled installing the version. You need a new version of ALKiln.
+  
+  Which version of ALKiln do you want to install? The top choice is the most recent version. While it is installing you will have to avoid the following:
+  
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing the server to reload, restart, or stop
 fields:
   - ALKiln version: version_to_install
     choices:
@@ -518,7 +546,12 @@ subquestion: |
   The server's current version of ALKiln is:[BR]
   **${ get_installed_version() }**
   
-  Do you want to install a different version of ALKiln before testing?
+  Do you want to install a different version of ALKiln before testing? While it is installing you will have to avoid the following:
+  
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing the server to reload, restart, or stop
+  
 fields:
   - Install a different verison of ALKiln: wants_install
     datatype: yesno
@@ -542,12 +575,11 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  **While tests are running DO NOT:**
+  **While ALKiln is installing DO NOT:**
   
-  - Edit this project right
   - Save a python module
   - Pull or upload a package with a python module
-  - Cause the server to reload
+  - Otherwise cause the server to reload, restart, or stop
   
   This should take less than a minute, though if your server or the npm servers are slow, it may take longer.
   
@@ -579,6 +611,13 @@ subquestion: |
   
   You will run your tests with this version of ALKiln:[BR]
   ** ${ get_installed_version() }**
+  
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Causing the server to reload, restart, or stop
 fields:
   - note: |
       The code you want to test should be in a Project on your Playground on this server.
@@ -625,14 +664,16 @@ prevent going back: True
 event: waiting_screen
 reload: True
 question: |
-  Hang tight. ALKiln is running the tests.
+  Hang tight, ALKiln is running the tests.
 subquestion: |
-  **While tests are running DO NOT:**
+  While tests are running try to avoid:
   
-  - Edit this project right
-  - Save a python module
-  - Pull or upload a package with a python module
-  - Cause the server to reload
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Causing the server to reload, restart, or stop
+  
+  Otherwise, tests might fail and you'll have to rerun them.
 
   This screen will reload about every 10 seconds until the tests are done (seconds depending on your server speed).
   
