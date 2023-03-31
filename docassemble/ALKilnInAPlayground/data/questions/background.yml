@@ -20,18 +20,39 @@ code: |
   if not user_logged_in():
     ask_to_log_in
   
+  if redo_after_stopped_with_invalid_install:
+    invalid_install = True
+    undefine_install_task = True
+    require_restart_install_timer = True
+    undefine('ask_version')
+    undefine('install_failed')
+    redo_after_stopped_with_invalid_install = False
+  
+  if undefine_install_task:
+    undefine('installation_output')
+    undefine_install_task = False
+  
   if version_error == '':
-    if ask_version and wants_install:
+    ask_version
+    if wants_install or invalid_install:
       # Don't install if not needed
-      foo = get_installed_version()
-      log(f'installed version {foo}', 'console')
-      if version_to_install != get_installed_version():
+      if started_with_different_version or invalid_install:
         installation_output
         # `.wait()` could cause a timeout
         if installation_output.ready():
           if installation_output.failed():
-            flag_failed_installation
+            # If failed after invalid install, even if it was a different failure, start again again. After an invalid install, it _really_ has to be sure to install.
+            if invalid_install:
+              redo_after_stopped_with_invalid_install = True
+            # Otherwise just show a failure message
+            else:
+              invalid_install = False
+              flag_failed_installation
+          else:
+            invalid_install = False
         else:
+          if require_restart_install_timer:
+            restart_install_timer
           wait_for_install
   
   not_wants_tags
@@ -50,20 +71,34 @@ code: |
 ####################################
 ---
 code: |
+  if version_to_install != get_installed_version():
+    started_with_different_version = True
+  else:
+    started_with_different_version = False
+---
+code: |
   installation_output = background_action('install_alkiln', None, version=version_to_install)
+---
+code: |
+  invalid_install = False
 ---
 event: stop_install_early
 code: |
-  stopped_install_early = True
+  redo_after_stopped_with_invalid_install = True
   installation_output.revoke()
 ---
 code: |
-  stopped_install_early = False
+  redo_after_stopped_with_invalid_install = False
+---
+code: |
+  undefine_install_task = False
 ---
 event: install_alkiln
 code: |
   import subprocess
   import os
+  
+  # TODO: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be non-cache problems?
   
   subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
@@ -76,22 +111,41 @@ code: |
   # unfortunately means there can't be just one source of truth
   # for which version of ALKiln is being used.
   
-  # if statement for idempotency - run install only once
+  # if statement for idempotency? Run install only once. Needed here?
   if not did_install:
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
-
+  
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
-    log('=== ALKiln === Error: installation failed:')
+    log(f'=== ALKiln === Error: installing version {action_argument("version")} failed')
     log(result)
-    # Cause error
-    install_output.check_returncode()
-  else:
-    result = install_output.stdout.decode('utf-8')
-    log('=== ALKiln === Installation succeeded:')
-    log(result)
+    
+    # Should this be a default behavior with any error?
+    if 'ENOTEMPTY' in result:
+      # When tested, returned non-zero exit status 217 was the logged subprocess err
+      
+      log('ALKiln: Trying to clean up the old installation.')
+      # https://stackoverflow.com/a/72022642
+      delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
+      
+      # Do we need an idempotency flag here?
+      log(f'ALKiln: Trying to install version {action_argument("version")} again.')
+      install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
+      
+      # Not sure what more we can do at this point if it goes wrong
+      if install_output.returncode != 0:
+        log(f'=== ALKiln === Error: 2nd time installing version {action_argument("version")} failed')
+        log(install_output.stderr.decode('utf-8'))
+        
+  # Always except if is still an error. Will cause failure.
+  install_output.check_returncode()
+  
+  # If no error thrown by now, log output and succeed
+  result = install_output.stdout.decode('utf-8')
+  log('=== ALKiln === Installation succeeded:')
+  log(result)
 
   background_response(result)
 ---
@@ -452,6 +506,7 @@ code: |
     # What would cause an error here?
     if result.returncode != 0:
       log('=== ALKiln === Error getting server ALKiln version:')
+      log(f'Error code: {result.returncode}')
       log(packages.stderr.decode("utf-8"))
       server_version = 'Error getting server ALKiln version'
     else:
@@ -466,11 +521,17 @@ code: |
 ---
 id: which task with no alkiln installed
 if: |
-  'Could not find' in get_installed_version()
+  'Could not find' in get_installed_version() or invalid_install
 question: |
   Install ALKiln
 subquestion: |
-  It looks like you're running ALKiln tests for the first time on this server. Which version of ALKiln do you want to install? The top choice is the most recent version.
+  It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and then cancelled installing the version. You need a new version of ALKiln.
+  
+  Which version of ALKiln do you want to install? The top choice is the most recent version. While it is installing you will have to avoid the following:
+  
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing the server to reload, restart, or stop
 fields:
   - ALKiln version: version_to_install
     choices:
@@ -480,14 +541,19 @@ continue button field: ask_version
 ---
 id: which task with prexisting version
 if: |
-  not 'Could not find' in get_installed_version()
+  not 'Could not find' in get_installed_version() and not invalid_install
 question: |
   ALKiln version
 subquestion: |
   The server's current version of ALKiln is:[BR]
   **${ get_installed_version() }**
   
-  Do you want to install a different version of ALKiln before testing?
+  Do you want to install a different version of ALKiln before testing? While it is installing you will have to avoid the following:
+  
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Otherwise causing the server to reload, restart, or stop
+  
 fields:
   - Install a different verison of ALKiln: wants_install
     datatype: yesno
@@ -502,6 +568,14 @@ code: |
   wants_install = True
 ---
 code: |
+  require_restart_install_timer = False
+---
+event: restart_install_timer
+code: |
+  require_restart_install_timer = False
+  install_start = current_datetime()
+---
+code: |
   install_start = current_datetime()
 ---
 id: wait for alkiln install
@@ -511,12 +585,26 @@ event: wait_for_install
 question: |
   One sec, installing ALKiln v${version_to_install}
 subquestion: |
-  This should be less than a minute, though if your server or the npm servers are slow, it may take longer.
+  **While ALKiln is installing DO NOT:**
+  
+  - Save a python module
+  - Pull or upload a package with a python module
+  - Otherwise cause the server to reload, restart, or stop
+  
+  This should take less than a minute, though if your server or the npm servers are slow, it may take longer.
   
   **Elapsed time: ${ str(date_difference( ending=current_datetime(), starting=install_start ).delta) }**[BR]
   (Updates about every 10 seconds depending on your server)
+
+# revoke install
+action buttons:
+  - label: Cancel and try again
+    action: stop_install_early
+    icon: window-close
+    color: danger
 ---
 id: test info
+prevent going back: True
 question: |
   Run ALKiln tests
 subquestion: |
@@ -534,6 +622,13 @@ subquestion: |
   
   You will run your tests with this version of ALKiln:[BR]
   ** ${ get_installed_version() }**
+  
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Causing the server to reload, restart, or stop
 fields:
   - note: |
       The code you want to test should be in a Project on your Playground on this server.
@@ -551,7 +646,15 @@ fields:
     # Doesn't matter if they leave it blank
     required: False
 continue button label: '<i class="far fa-play-circle"></i> Run tests'
-#+ [['', 'Default']]
+action buttons:
+  - label: Restart
+    action: do_restart
+    icon: undo
+    color: warning
+---
+event: do_restart
+code: |
+  command('restart')
 ---
 if:
   - not_wants_tags
@@ -570,13 +673,23 @@ prevent going back: True
 event: waiting_screen
 reload: True
 question: |
-  Hang tight. ALKiln is running the tests.
+  Hang tight, ALKiln is running the tests.
 subquestion: |
+  While tests are running try to avoid:
+  
+  - Editing this project
+  - Saving a python module
+  - Pulling or uploading a package with a python module
+  - Causing the server to reload, restart, or stop
+  
+  Otherwise, tests might fail and you'll have to rerun them.
+
   This screen will reload about every 10 seconds until the tests are done (seconds depending on your server speed).
   
   **Elapsed time: ${ str(test_time.delta) }**[BR]
   (Updates about every 10 seconds depending on your server)
-  
+
+# revoke tests
 action buttons:
   - label: Stop tests early
     action: stop_tests_early
