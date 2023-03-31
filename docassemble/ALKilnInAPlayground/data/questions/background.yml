@@ -534,7 +534,7 @@ question: |
 subquestion: |
   It looks like you either don't have ALKiln installed yet or you need to install a new version for another reason. For example, someone may have started installing a version and then cancelled installing the version. You need a new version of ALKiln.
   
-  Which version of ALKiln do you want to install? The top choice is the most recent version. While it is installing you will have to avoid the following:
+  Which version of ALKiln do you want to install? The top choice is the most recent version. **While it is installing you will have to avoid the following**:
   
   - Saving a python module
   - Pulling or uploading a package with a python module
