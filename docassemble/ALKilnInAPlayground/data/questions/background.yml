@@ -1,4 +1,14 @@
 ---
+metadata:
+  title: |
+    ALKiln in The Playground
+  short title: |
+    ALKiln
+  description: |
+    Run ALKiln tests on your server. No GitHub required.
+  under: |
+    See guides for writing tests in the [ALKiln documentation](https://suffolklitlab.org/docassemble-AssemblyLine-documentation/docs/automated_integrated_testing).
+---
 comment: |
   alkiln-run --sources /my/dir/ --tags @1 and @2 --max_step_s 30
   https://docs.python.org/3/library/argparse.html#example
@@ -9,15 +19,14 @@ comment: |
   Current env var validation too simple. Maybe use _ORIGIN. Or validate where they're used. `setup.js` `session_vars.validate_setup_vars()`
 ---
 comment: |
-  TODO:
-  See issue https://github.com/SuffolkLITLab/ALKiln/issues/675
+  TODO: See issue https://github.com/SuffolkLITLab/ALKiln/issues/675
 ---
 features:
   css: alkiln_through_interview.css
 ---
 mandatory: True
 code: |
-  if not user_logged_in():
+  if not user_has_privilege(['admin', 'developer']):
     ask_to_log_in
   
   if redo_after_stopped_with_invalid_install:
@@ -448,11 +457,9 @@ code: |
 event: ask_to_log_in
 id: not logged in
 question: |
-  You need to log in
+  You need to log in as a developer
 subquestion: |
-  To run these tests, you need to be logged into the server where you're keeping the package that you will test.
-  
-  When you've logged in, come back and refresh.
+  To run these tests, you need to be logged into the server where you're keeping the package that you will test. You must be logged in as a developer or an admin.
 buttons:
   Log into this server: signin
 ---
