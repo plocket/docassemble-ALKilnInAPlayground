@@ -22,9 +22,10 @@ code: |
   
   if redo_after_stopped_with_invalid_install:
     invalid_install = True
+    undefine_install_task = True
+    require_restart_install_timer = True
     undefine('ask_version')
     undefine('install_failed')
-    undefine_install_task = True
     redo_after_stopped_with_invalid_install = False
   
   if undefine_install_task:
@@ -40,15 +41,18 @@ code: |
         # `.wait()` could cause a timeout
         if installation_output.ready():
           if installation_output.failed():
-            # If failed after invalid install, start again again
+            # If failed after invalid install, even if it was a different failure, start again again. After an invalid install, it _really_ has to be sure to install.
             if invalid_install:
               redo_after_stopped_with_invalid_install = True
+            # Otherwise just show a failure message
             else:
               invalid_install = False
               flag_failed_installation
           else:
             invalid_install = False
         else:
+          if require_restart_install_timer:
+            restart_install_timer
           wait_for_install
   
   not_wants_tags
@@ -94,6 +98,8 @@ code: |
   import subprocess
   import os
   
+  # TODO: How do we detect if someone _else_ on the server didn't properly finish installing ALKiln and that there will be non-cache problems?
+  
   subprocess.run(['mkdir', '-p', '/var/www/.npm-global'])
   
   # Must install with npm version, not GitHub branch as
@@ -105,40 +111,36 @@ code: |
   # unfortunately means there can't be just one source of truth
   # for which version of ALKiln is being used.
   
-  # if statement for idempotency - run install only once
+  # if statement for idempotency? Run install only once. Needed here?
   if not did_install:
     to_install = f'@suffolklitlab/alkiln@{action_argument("version")}'
     install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
     did_install = True
-    
-  try:
-    install_output.check_returncode()
-  except Exception as err:
-    log('======== caught ENOTEMPTY ==========')
-    log(err)
-    log('================')
   
   if install_output.returncode != 0:
     result = install_output.stderr.decode('utf-8')
     log(f'=== ALKiln === Error: installing version {action_argument("version")} failed')
     log(result)
     
+    # Should this be a default behavior with any error?
     if 'ENOTEMPTY' in result:
-      # returned non-zero exit status 217 was the logged subprocess err
+      # When tested, returned non-zero exit status 217 was the logged subprocess err
+      
       log('ALKiln: Trying to clean up the old installation.')
+      # https://stackoverflow.com/a/72022642
       delete_kiln_output = subprocess.run(['rm', '-r', '/var/www/.npm-global/lib/node_modules/@suffolklitlab'], check=False, capture_output=True)
       
-      log('ALKiln: Trying to install the same version again.')
+      # Do we need an idempotency flag here?
+      log(f'ALKiln: Trying to install version {action_argument("version")} again.')
       install_output = subprocess.run(['npm', 'install', '-g', to_install], check=False, capture_output=True, env=dict(os.environ, NPM_CONFIG_PREFIX="/var/www/.npm-global"))
       
+      # Not sure what more we can do at this point if it goes wrong
       if install_output.returncode != 0:
+        log(f'=== ALKiln === Error: 2nd time installing version {action_argument("version")} failed')
         log(install_output.stderr.decode('utf-8'))
-      # Will except if is error, causing failure. Not sure more we can do.
-      install_output.check_returncode()
-      
-    else:
-      # Cause failure
-      install_output.check_returncode()
+        
+  # Always except if is still an error. Will cause failure.
+  install_output.check_returncode()
   
   # If no error thrown by now, log output and succeed
   result = install_output.stdout.decode('utf-8')
@@ -519,7 +521,7 @@ code: |
 ---
 id: which task with no alkiln installed
 if: |
-  'Could not find' in get_installed_version()
+  'Could not find' in get_installed_version() or invalid_install
 question: |
   Install ALKiln
 subquestion: |
@@ -539,7 +541,7 @@ continue button field: ask_version
 ---
 id: which task with prexisting version
 if: |
-  not 'Could not find' in get_installed_version()
+  not 'Could not find' in get_installed_version() and not invalid_install
 question: |
   ALKiln version
 subquestion: |
@@ -564,6 +566,14 @@ continue button field: ask_version
 ---
 code: |
   wants_install = True
+---
+code: |
+  require_restart_install_timer = False
+---
+event: restart_install_timer
+code: |
+  require_restart_install_timer = False
+  install_start = current_datetime()
 ---
 code: |
   install_start = current_datetime()
@@ -594,6 +604,7 @@ action buttons:
     color: danger
 ---
 id: test info
+prevent going back: True
 question: |
   Run ALKiln tests
 subquestion: |
@@ -640,8 +651,6 @@ action buttons:
     action: do_restart
     icon: undo
     color: warning
-
-#+ [['', 'Default']]
 ---
 event: do_restart
 code: |
@@ -679,7 +688,8 @@ subquestion: |
   
   **Elapsed time: ${ str(test_time.delta) }**[BR]
   (Updates about every 10 seconds depending on your server)
-  
+
+# revoke tests
 action buttons:
   - label: Stop tests early
     action: stop_tests_early
